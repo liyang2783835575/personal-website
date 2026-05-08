@@ -1,0 +1,321 @@
+@import "tailwindcss";
+
+/* ===== Cyberpunk Neon Color System ===== */
+:root {
+  --neon-cyan: #00fff9;
+  --neon-magenta: #ff00ff;
+  --neon-purple: #b026ff;
+  --neon-blue: #4d7cff;
+  --neon-pink: #ff6ec7;
+
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #0f0f1a;
+  --bg-card: rgba(15, 15, 25, 0.8);
+  --bg-card-hover: rgba(20, 20, 40, 0.9);
+
+  --text-primary: #e0e0ff;
+  --text-secondary: #8888aa;
+  --text-muted: #555577;
+
+  --border-glow: rgba(0, 255, 249, 0.2);
+  --border-dim: rgba(255, 255, 255, 0.06);
+
+  --glow-xs: 0 0 3px var(--neon-cyan);
+  --glow-sm: 0 0 5px var(--neon-cyan);
+  --glow-md: 0 0 15px var(--neon-cyan), 0 0 30px rgba(0, 255, 249, 0.3);
+  --glow-lg: 0 0 20px var(--neon-cyan), 0 0 40px rgba(0, 255, 249, 0.4), 0 0 80px rgba(0, 255, 249, 0.2);
+  --glow-magenta: 0 0 15px var(--neon-magenta), 0 0 30px rgba(255, 0, 255, 0.3);
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Fira Code", monospace;
+}
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-magenta: var(--neon-magenta);
+  --color-neon-purple: var(--neon-purple);
+  --color-neon-blue: var(--neon-blue);
+  --color-neon-pink: var(--neon-pink);
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-card: var(--bg-card);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* ===== Global Reset ===== */
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--neon-cyan) var(--bg-secondary);
+}
+
+/* ===== Scroll Snap (Full-Page Sections) ===== */
+.snap-container {
+  height: 100vh;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--neon-cyan) var(--bg-secondary);
+}
+
+.snap-container::-webkit-scrollbar {
+  width: 6px;
+}
+.snap-container::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+.snap-container::-webkit-scrollbar-thumb {
+  background: var(--neon-cyan);
+  border-radius: 3px;
+}
+
+.snap-section {
+  min-height: 100vh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  position: relative;
+}
+
+/* Section scanline transition — triggered by JS class toggle */
+.snap-section.section-entering::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 255, 249, 0.06) 50%,
+    transparent 100%
+  );
+  animation: section-scanline 0.6s ease-out forwards;
+  z-index: 10;
+}
+
+@keyframes section-scanline {
+  0% { opacity: 1; clip-path: inset(0 0 100% 0); }
+  50% { opacity: 1; clip-path: inset(0 0 40% 0); }
+  100% { opacity: 0; clip-path: inset(0 0 0 0); }
+}
+
+/* Section content overflow scroll (for tall sections like Experience) */
+.section-scroll-area {
+  overflow-y: auto;
+  max-height: calc(100vh - 8rem);
+  scrollbar-width: thin;
+  scrollbar-color: var(--neon-cyan) transparent;
+}
+
+.section-scroll-area::-webkit-scrollbar {
+  width: 4px;
+}
+.section-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+.section-scroll-area::-webkit-scrollbar-thumb {
+  background: var(--neon-cyan);
+  border-radius: 2px;
+}
+
+/* Reduced motion: disable all scroll-linked animations */
+@media (prefers-reduced-motion: reduce) {
+  .snap-section.section-entering::after {
+    animation: none;
+    display: none;
+  }
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--neon-cyan);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-magenta);
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(0, 255, 249, 0.3);
+  color: #fff;
+}
+
+/* ===== Scanline Overlay ===== */
+.scanline-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 249, 0.015) 2px,
+    rgba(0, 255, 249, 0.015) 4px
+  );
+  animation: scanline-scroll 8s linear infinite;
+}
+
+@keyframes scanline-scroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 100vh; }
+}
+
+/* ===== Neon Glow Utilities ===== */
+.neon-text-cyan {
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-sm);
+}
+.neon-text-magenta {
+  color: var(--neon-magenta);
+  text-shadow: var(--glow-magenta);
+}
+.neon-border {
+  border: 1px solid var(--border-glow);
+  box-shadow: var(--glow-xs), inset 0 0 15px rgba(0, 255, 249, 0.03);
+}
+.neon-border-magenta {
+  border: 1px solid rgba(255, 0, 255, 0.3);
+  box-shadow: 0 0 5px rgba(255, 0, 255, 0.2);
+}
+
+/* ===== Glass Morphism ===== */
+.glass {
+  background: rgba(10, 10, 15, 0.7);
+  backdrop-filter: blur(12px) saturate(1.5);
+  -webkit-backdrop-filter: blur(12px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ===== Glitch Text Effect ===== */
+.glitch {
+  position: relative;
+  display: inline-block;
+}
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.glitch::before {
+  color: var(--neon-cyan);
+  z-index: -1;
+  animation: glitch-shift-1 3s infinite linear alternate-reverse;
+  clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+}
+.glitch::after {
+  color: var(--neon-magenta);
+  z-index: -2;
+  animation: glitch-shift-2 2.5s infinite linear alternate-reverse;
+  clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+}
+
+@keyframes glitch-shift-1 {
+  0%, 90% { transform: translate(0); }
+  92% { transform: translate(-3px, 1px); }
+  94% { transform: translate(3px, -1px); }
+  96% { transform: translate(-2px, 2px); }
+  98% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+@keyframes glitch-shift-2 {
+  0%, 88% { transform: translate(0); }
+  90% { transform: translate(2px, -1px); }
+  93% { transform: translate(-3px, 2px); }
+  96% { transform: translate(3px, 1px); }
+  99% { transform: translate(-1px, -1px); }
+  100% { transform: translate(0); }
+}
+
+/* ===== Neon Gradient Background ===== */
+.neon-gradient-bg {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(0, 255, 249, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(176, 38, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(255, 0, 255, 0.04) 0%, transparent 50%),
+    var(--bg-primary);
+}
+
+/* ===== Card Tilt (base styles, JS handles the transform) ===== */
+.tilt-card {
+  transform-style: preserve-3d;
+  transition: transform 0.15s ease-out;
+}
+.tilt-card .card-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(
+    600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(0, 255, 249, 0.1),
+    transparent 40%
+  );
+}
+.tilt-card:hover .card-shine {
+  opacity: 1;
+}
+
+/* ===== Typing Cursor ===== */
+.typing-cursor::after {
+  content: '|';
+  animation: blink 1s step-end infinite;
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-sm);
+}
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ===== Animated Neon Line ===== */
+.neon-line {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--neon-cyan),
+    var(--neon-magenta),
+    var(--neon-cyan),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: neon-line-shift 3s linear infinite;
+}
+@keyframes neon-line-shift {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ===== Floating Grid Background ===== */
+.cyber-grid {
+  background-image:
+    linear-gradient(rgba(0, 255, 249, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 249, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}

@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:www.awwwards.com)",
+      "mcp__minimax__web_search",
+      "Read(//c/Users/liyang/Desktop/claude//**)",
+      "Read(//c/Users/liyang/Desktop/claude/**)",
+      "Bash(git:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__new_page",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__take_screenshot",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__list_console_messages",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__evaluate_script",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl -s \"http://localhost:3000/_next/static/chunks/%5Broot-of-the-server%5D__02nfq85._.css\")",
+      "Read(//tmp/**)",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__list_pages",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__navigate_page",
+      "Bash(pkill -f \"next dev\")",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__wait_for",
+      "Bash(ls C:/Users/liyang/Desktop/claude/personalWebsite/*.md)",
+      "Bash(npx vitest:*)",
+      "WebFetch(domain:gsap.com)",
+      "WebFetch(domain:www.smashingmagazine.com)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/next/package.json'\\); console.log\\('Next.js version:', pkg.version\\);\")",
+      "Bash(ls \"C:/Users/liyang/Desktop/claude/personalWebsite/vitest.config\"*)",
+      "Bash(ls \"C:/Users/liyang/Desktop/claude/personalWebsite/vite.config\"*)",
+      "Bash(tasklist)",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__take_snapshot",
+      "Bash(curl:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('full_name', d\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('html_url', d.get\\('message', d\\)\\)\\)\")",
+      "Bash(node:*)",
+      "Bash(taskkill //F //IM \"node.exe\")"
+    ]
+  }
+}
