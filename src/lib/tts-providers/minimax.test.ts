@@ -86,6 +86,56 @@ describe("minimaxProvider", () => {
     expect(result.format).toBe("mp3");
   });
 
+  it("converts hex-encoded audio to base64", async () => {
+    // Simulate MiniMax API returning hex-encoded audio
+    // "qwE=" in hex is 716f453d (6 bytes) — use a longer pad to pass length>100 guard
+    const hexAudio = "a".repeat(102);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { audio: hexAudio },
+        extra_info: { audio_format: "mp3" },
+      }),
+    });
+
+    const result = await minimaxProvider.generate({
+      text: "hello", voice: "male-qn-qingse", format: "mp3", model: "speech-2.8-hd",
+    });
+
+    // hex "aa" * 51 → 51 bytes of 0xAA → base64 "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" (51 * 0xAA)
+    expect(result.audioBase64).toBe("q".repeat(68));
+    expect(result.format).toBe("mp3");
+  });
+
+  it("uses response extra_info.audio_format when available", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: { audio: "dGVzdA==" },
+        extra_info: { audio_format: "wav" },
+      }),
+    });
+
+    const result = await minimaxProvider.generate({
+      text: "hello", voice: "male-qn-qingse", format: "mp3", model: "speech-2.8-hd",
+    });
+
+    expect(result.format).toBe("wav");
+  });
+
+  it("falls back to requested format when extra_info not present", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { audio: "dGVzdA==" } }),
+    });
+
+    const result = await minimaxProvider.generate({
+      text: "hello", voice: "male-qn-qingse", format: "wav", model: "speech-2.8-hd",
+    });
+
+    expect(result.format).toBe("wav");
+  });
+
   it("throws when upstream returns non-ok status", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
