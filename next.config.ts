@@ -6,7 +6,7 @@ const ContentSecurityPolicy = `
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: blob:;
-  connect-src 'self' https://api.anthropic.com https://fonts.googleapis.com https://fonts.gstatic.com;
+  connect-src 'self' https://api.anthropic.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.minimaxi.com https://token-plan-cn.xiaomimimo.com;
   media-src 'self' blob:;
   frame-src 'none';
   object-src 'none';
