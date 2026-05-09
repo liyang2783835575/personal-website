@@ -67,16 +67,31 @@ export default function Tools() {
                 animate={{ x: 0 }}
                 exit={{ x: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-md bg-bg-secondary neon-border-l overflow-y-auto"
+                className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-xl bg-bg-secondary neon-border-l overflow-hidden flex flex-col"
               >
                 {/* Header */}
-                <div className="sticky top-0 flex items-center justify-between p-4 glass border-b border-white/5">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{activePlugin.icon}</span>
-                    <h3 className="font-bold text-text-primary font-mono">
-                      {activePlugin.name}
-                    </h3>
+                <div className="flex items-center justify-between p-3 glass border-b border-white/5">
+                  {/* Tab bar */}
+                  <div className="flex items-center gap-1 bg-black/20 rounded-lg p-1">
+                    {plugins.map((plugin) => {
+                      const isActive = activePlugin?.id === plugin.id;
+                      return (
+                        <button
+                          key={plugin.id}
+                          onClick={() => setActivePlugin(plugin)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
+                            isActive
+                              ? "bg-neon-cyan/10 text-neon-cyan shadow-[var(--glow-xs)]"
+                              : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                          }`}
+                        >
+                          <span>{plugin.icon}</span>
+                          <span>{plugin.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
+                  {/* Close button */}
                   <button
                     onClick={() => setActivePlugin(null)}
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
@@ -95,7 +110,7 @@ export default function Tools() {
                 </div>
 
                 {/* Plugin content */}
-                <div className="p-6">
+                <div className="flex-1 overflow-y-auto p-4">
                   <Suspense
                     fallback={
                       <div className="flex items-center justify-center py-12">
