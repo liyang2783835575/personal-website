@@ -8,7 +8,7 @@
 
 ### 1.1 目标
 
-赛博朋克风格个人简历展示网站，集成 AI 工具集（TTS + 数字分身聊天），展示技术能力、项目经历、技能图谱，支持访客交互。
+赛博朋克风格个人简历展示网站，集成 AI 工具集（TTS 多 Provider 语音合成 + 数字分身聊天），展示技术能力、项目经历、技能图谱，支持访客交互。
 
 ### 1.2 技术栈
 
@@ -19,15 +19,17 @@
 | 样式 | Tailwind CSS v4 | — |
 | 动画 | Framer Motion | 12.38.0 |
 | 3D 背景 | Three.js + @react-three/fiber + @react-three/drei | — |
-| AI 对话 | @anthropic-ai/sdk (Claude API) | — |
-| 输入校验 | Zod | — |
+| AI 对话 | @anthropic-ai/sdk (Claude API) | 0.95.1 |
+| TTS | MiMo API + MiniMax API (双 Provider) | — |
+| 存储 | IndexedDB (TTS 历史记录) | — |
+| 输入校验 | Zod | 4.4.3 |
 | 工具函数 | clsx + tailwind-merge | — |
-| 测试 | Vitest + @testing-library/react | — |
+| 测试 | Vitest + @testing-library/react | 4.1.5 / 16.3.2 |
 | 部署 | Vercel (Edge Runtime) | — |
 
 ### 1.3 约束条件
 
-- **预算**：零成本优先，API 调用使用已有的 Claude 账户
+- **预算**：零成本优先，API 调用使用已有账户
 - **性能**：Lighthouse Performance ≥ 90，CLS < 0.1
 - **可访问性**：WCAG 2.1 AA，支持 `prefers-reduced-motion`
 - **浏览器支持**：Chrome 90+、Firefox 90+、Safari 14+、Edge 90+
@@ -289,16 +291,75 @@ interface Plugin {
 - Drawer 内通过 `React.lazy()` 懒加载插件组件
 - 关闭：点击 backdrop 或关闭按钮
 
-### 4.8 TtsTool
+### 4.8 TtsTool — 多 Provider TTS 语音合成
 
-- 优先使用 **Web Speech API**（`window.speechSynthesis`），零成本
-- 降级方案：MiniMax TTS API（需配置 `MINIMAX_API_KEY` 环境变量）
-- 功能：语言选择、语速调节、播放/暂停/停止
-- 组件卸载时调用 `speechSynthesis.cancel()` 清理
+#### 4.8.1 Provider 架构
+
+采用 **TtsProvider 接口抽象**，支持 MiMo 和 MiniMax 两个 Provider 切换：
+
+```
+┌──────────────────────────────────────┐
+│            TtsTool.tsx               │
+│  (UI: model selector, voices, tags) │
+└──────────────┬───────────────────────┘
+               │ POST /api/tts
+┌──────────────▼───────────────────────┐
+│        route.ts (Edge Runtime)       │
+│  Zod 校验 → getProvider() → 路由     │
+└──────┬────────────────────┬──────────┘
+       │                    │
+┌──────▼──────┐   ┌────────▼──────────┐
+│  mimo.ts    │   │  minimax.ts       │
+│  Chat       │   │  T2A v2           │
+│  Completions│   │  + Voice Clone    │
+└─────────────┘   └───────────────────┘
+```
+
+#### 4.8.2 MiMo vs MiniMax 差异
+
+| | MiMo | MiniMax |
+|---|---|---|
+| 端点 | `POST /v1/chat/completions` | `POST /v1/t2a_v2` |
+| 格式 | Chat Completions (OpenAI 兼容) | 自有格式 |
+| Auth Header | `api-key` | `Authorization: Bearer` |
+| 模型 | `mimo-v2.5-tts` / `voicedesign` / `voiceclone` | `speech-2.8-hd` 等 |
+| 音色 | 预置 9 个 + 文本设计 + 音频复刻 | 系统音色 + 音色复刻 |
+| 风格控制 | 中文风格标签 `(开心)` 嵌入文本 + user role 自然语言 | 英文副语言标签 + `emotion` 参数 |
+| 音频参数 | format (mp3/wav/pcm16) | format + sample_rate + bitrate + channel |
+| 额外参数 | — | speed / vol / pitch / subtitle_enable |
+
+#### 4.8.3 三大高级模式
+
+**音色设计 (Voice Design)** — MiMo `mimo-v2.5-tts-voicedesign`
+- 通过自然语言描述生成即时音色（如 "温柔知性的中年女声，语速偏慢，略带沙哑"）
+- 不需要 voice 参数，模型自动生成音色
+- 生成后可播放/保存，音色不持久化
+
+**音色复刻 (Voice Clone)** — MiMo `mimo-v2.5-tts-voiceclone` / MiniMax Voice Clone
+- MiMo：上传音频 → base64 → 直接作为 voice 参数调用 TTS
+- MiniMax：上传音频 → `/v1/voice_clone` 生成 voice_id → 调用 `/v1/t2a_v2` 合成
+- UI：文件上传组件 + 文件信息展示
+
+**导演模式 (Director Mode)**
+- 结构化输入：角色、场景、指导
+- 拼接为自然语言 style 文本传入 user role
+- 控制语音的情感表现、语速语调、场景氛围
+
+#### 4.8.4 标签系统
+
+- **风格标签**：40+ 中文标签（情绪/语气/语速/角色/场景/特效 六类），toggle 多选，支持自定义标签输入
+- **音频标签**：16 个非语言声音标签（笑/叹气/抽泣/深呼吸等），点击插入光标位置，支持自定义
+
+#### 4.8.5 历史记录 (IndexedDB)
+
+- 最近 5 条生成记录持久化到 IndexedDB
+- 单条记录超限时自动删除最旧记录
+- IndexedDB 不可用时自动降级为内存模式
+- 写入失败时回滚状态
 
 ### 4.9 ChatTool（数字分身）
 
-- 使用 `/api/chat` 流式 API，Readablestream 逐帧渲染
+- 使用 `/api/chat` 流式 API，ReadableStream 逐帧渲染
 - 消息历史保存在 React state，每次发送将历史消息一起发送到 API
 - 避免陈旧闭包：使用 `useRef` 保存当前消息列表快照
 - 错误处理：部分内容时保留已接收内容并追加错误提示
@@ -351,13 +412,38 @@ interface Plugin {
 - 所有异常返回通用错误 JSON，HTTP 500
 - JSON-LD sanitize：`<` 替换为 `\u003c`
 
-**安全措施**
-- CSP 头：`script-src 'self' 'unsafe-inline' 'unsafe-eval'`（Three.js SSR 需要）+ `connect-src 'self' https://api.anthropic.com`
-- 输入校验：Zod schema 校验每个 message 的 role + content
-- 速率限制：In-memory `Map<string, { count, resetAt }>`
-- 错误隔离：所有 try-catch 返回通用错误，不泄漏内部信息
+### 5.2 POST `/api/tts` — TTS 语音合成
 
-### 5.2 SEO 相关路由
+**请求**
+```typescript
+{
+  provider: "mimo" | "minimax";   // Provider 选择，默认 "mimo"
+  model: string;                   // 模型 ID
+  text: string;                    // 合成文本 (1-2000 chars)
+  voice?: string;                  // 音色 ID（音色设计模式可选）
+  voiceData?: string;             // 音频 base64（音色复刻模式）
+  style?: string;                  // 自然语言风格描述
+  format?: "mp3" | "wav" | "pcm16"; // 音频格式
+  speed?: number;                  // 语速 (0.5-2.0)
+  pitch?: number;                  // 音调 (-12~12)
+  volume?: number;                 // 音量 (0.1-10)
+}
+```
+
+**响应**：JSON `{ audio: "<base64>", format: "mp3" }`
+
+**实现细节**
+- Edge Runtime
+- Zod 校验全部输入，错误返回 400
+- 根据 `provider` 参数路由到对应 Provider
+- voice 可选（音色设计模式不需要）
+- style 最大 2000 字符，voiceData 最大 7,000,000 字符
+- CORS 校验：对比 Origin/Referer
+- 25s AbortController 超时
+- Provider 未配置 Key 返回 503（不泄漏具体原因）
+- Provider API 错误返回 502（不泄漏上游错误详情）
+
+### 5.3 SEO 相关路由
 
 | 路由 | 类型 | 用途 |
 |------|------|------|
@@ -386,7 +472,57 @@ export interface ResumeData {
 }
 ```
 
-### 6.2 useReducedMotion Hook
+### 6.2 TTS Provider 接口
+
+```typescript
+// src/lib/tts-providers/types.ts
+interface TtsRequest {
+  text: string;
+  voice: string;
+  format: TtsAudioFormat;
+  model: string;
+  style?: string;
+  speed?: number;
+  pitch?: number;
+  volume?: number;
+  voiceData?: string;
+}
+
+interface TtsResponse {
+  audioBase64: string;
+  format: string;
+}
+
+interface TtsProvider {
+  id: string;
+  name: string;
+  models: TtsModel[];
+  defaultModel: string;
+  defaultVoiceId: string;
+  voices: Voice[];
+  generate(req: TtsRequest): Promise<TtsResponse>;
+}
+```
+
+### 6.3 IndexedDB Schema
+
+```typescript
+// src/lib/tts-db.ts
+interface TtsRecord {
+  id: string;          // UUID
+  voiceId: string;     // 音色 ID
+  voiceName: string;   // 音色名称
+  text: string;        // 合成文本
+  audioBlob: Blob;     // 音频数据
+  createdAt: number;   // 创建时间戳
+}
+```
+
+- 数据库名：`tts-db`，Store 名：`records`
+- 最多 5 条记录，超出时自动删除最旧记录
+- 总大小限制 30MB，单条写入前检查配额
+
+### 6.4 useReducedMotion Hook
 
 ```typescript
 export function useReducedMotion(): boolean {
@@ -452,7 +588,7 @@ Content-Security-Policy: default-src 'self';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   img-src 'self' data: https:;
   font-src 'self' https://fonts.gstatic.com;
-  connect-src 'self' https://api.anthropic.com;
+  connect-src 'self' https://api.anthropic.com https://api.minimaxi.com https://token-plan-cn.xiaomimimo.com;
   frame-src 'none';
   object-src 'none';
 ```
@@ -468,20 +604,25 @@ Content-Security-Policy: default-src 'self';
 
 ### 8.3 API 路由安全
 
-- Zod 校验所有输入（角色白名单、content 长度限制）
-- 内存速率限制：10 req/min/IP
+- Zod 校验所有输入（角色白名单、content 长度限制、format 枚举白名单）
+- 内存速率限制（`/api/chat`：10 req/min/IP）
 - Origin/Referer 校验
-- 环境变量存储密钥（`ANTHROPIC_API_KEY`）
-- `.env.example` 作为模板，`.env` 不提交
+- 环境变量存储密钥，不提交到仓库
+- API 错误不泄漏上游详情（`/api/chat`：统一 "An error occurred"，`/api/tts`：503 "Service temporarily unavailable" / 502 "Speech synthesis failed"）
+- 25s AbortController 超时防止上游 hang
 
 ---
 
 ## 9. 测试覆盖
 
-### 9.1 测试文件
+### 9.1 测试总览
 
-| 文件 | 测试数量 | 覆盖范围 |
-|------|---------|---------|
+**158 个测试，14 个测试文件，100% 通过**
+
+### 9.2 测试文件
+
+| 文件 | 测试数 | 覆盖范围 |
+|------|--------|---------|
 | `useReducedMotion.test.ts` | 5 | hook 逻辑、media query 响应 |
 | `resume.test.ts` | 11 | 数据结构完整性、字段类型 |
 | `plugins.test.ts` | 6 | 插件注册表过滤逻辑 |
@@ -490,10 +631,14 @@ Content-Security-Policy: default-src 'self';
 | `Contact.test.tsx` | 7 | 链接渲染、空数据处理 |
 | `useActiveSection.test.ts` | 8 | IO 回调、清理、默认值 |
 | `ScrollProgress.test.tsx` | 5 | 渲染、活跃状态、点击跳转 |
+| `TtsTool.test.tsx` | 33 | Provider 切换、音色选择、风格标签、音频标签、文本输入、高级设置、试听、历史记录、音色设计、音色复刻、导演模式、错误处理 |
+| `mimo.test.ts` | 11 | API Key 检查、端点 URL、Header 构造、消息构建、voiceData、上游错误、缺失音频数据、空 choices |
+| `minimax.test.ts` | 13 | API Key 检查、端点 URL、Authorization Header、format 映射、voice_setting 默认值、speed/vol/pitch、emotion、错误处理 |
+| `tts-tags.test.ts` | 10 | 标签分类结构、去重、Provider 过滤 |
+| `tts-db.test.ts` | 12 | CRUD 操作、配额管理、降级模式 |
+| `route.test.ts` (tts) | 22 | JSON 校验、文本长度边界、voiceData 大小边界、style 长度限制、speed 边界、format 枚举、CORS、Provider 路由、503/502 错误隔离 |
 
-**总计：60 个测试，100% 通过**
-
-### 9.2 测试工具
+### 9.3 测试工具
 
 - **Vitest**：测试运行器，支持 Vite 快速 HMR
 - **@testing-library/react**：`renderHook`、`render`、`screen`、`fireEvent`
@@ -508,31 +653,18 @@ Content-Security-Policy: default-src 'self';
 1. `vercel.json` 已配置：`{ "framework": "nextjs" }`
 2. 环境变量（Vercel Dashboard 设置）：
    - `ANTHROPIC_API_KEY`：Claude API 密钥
+   - `MIMO_API_KEY`：MiMo TTS API 密钥
+   - `MINIMAX_API_KEY`：MiniMax TTS API 密钥
    - `NEXT_PUBLIC_SITE_URL`：生产环境 URL（https://liyang.dev）
 3. 构建命令：`npm run build`
 4. 输出目录：`.next`（Next.js 默认）
 
 ### 10.2 Edge Runtime
 
-`/api/chat` 使用 Edge Runtime，获得：
+`/api/chat` 和 `/api/tts` 使用 Edge Runtime，获得：
 - 全球边缘节点低延迟
 - 冷启动 < 50ms
 - 免费额度足够个人站
-
-### 10.3 Gitee 仓库
-
-仓库地址：https://gitee.com/lyzwd/personal-website.git
-
-```bash
-# 克隆
-git clone https://gitee.com/lyzwd/personal-website.git
-# 安装依赖
-npm install
-# 开发
-npm run dev
-# 构建
-npm run build
-```
 
 ---
 
@@ -542,57 +674,70 @@ npm run build
 personalWebsite/
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx          # 根布局：字体、全局样式、SEO 元数据、JSON-LD
-│   │   ├── page.tsx            # 主页面：snap-container、useActiveSection、键盘导航
-│   │   ├── globals.css         # CSS 变量、snap 样式、动画 keyframes
-│   │   ├── opengraph-image.tsx  # OG 图片生成（1200×630）
-│   │   ├── robots.ts           # robots.txt
-│   │   ├── sitemap.ts          # sitemap.xml
-│   │   ├── error.tsx           # 错误边界
-│   │   ├── loading.tsx         # 加载状态
+│   │   ├── layout.tsx              # 根布局：字体、全局样式、SEO 元数据、JSON-LD
+│   │   ├── page.tsx                # 主页面：snap-container、useActiveSection、键盘导航
+│   │   ├── globals.css             # CSS 变量、snap 样式、动画 keyframes
+│   │   ├── opengraph-image.tsx     # OG 图片生成（1200×630）
+│   │   ├── robots.ts               # robots.txt
+│   │   ├── sitemap.ts              # sitemap.xml
+│   │   ├── error.tsx               # 错误边界
+│   │   ├── loading.tsx             # 加载状态
 │   │   └── api/
-│   │       └── chat/
-│   │           └── route.ts    # 数字分身流式 API（Edge Runtime）
+│   │       ├── chat/
+│   │       │   └── route.ts        # 数字分身流式 API（Edge Runtime）
+│   │       └── tts/
+│   │           ├── route.ts        # TTS 多 Provider 路由（Edge Runtime）
+│   │           └── route.test.ts   # TTS API 集成测试
 │   ├── components/
 │   │   ├── layout/
-│   │   │   ├── Navbar.tsx       # 导航栏：活跃高亮、移动端菜单
-│   │   │   └── Footer.tsx       # 页脚
+│   │   │   ├── Navbar.tsx           # 导航栏：活跃高亮、移动端菜单
+│   │   │   └── Footer.tsx           # 页脚
 │   │   ├── sections/
-│   │   │   ├── Hero.tsx         # 粒子场 + 打字机 + CTA
-│   │   │   ├── About.tsx        # 头像 + 简介
-│   │   │   ├── Skills.tsx       # 分类进度条
-│   │   │   ├── Experience.tsx   # 时间线（内部滚动）
-│   │   │   ├── Projects.tsx     # 卡片网格（移动端横向滚动）
-│   │   │   ├── Tools.tsx        # 插件入口 + Drawer
-│   │   │   └── Contact.tsx      # 社交链接
+│   │   │   ├── Hero.tsx             # 粒子场 + 打字机 + CTA
+│   │   │   ├── About.tsx            # 头像 + 简介
+│   │   │   ├── Skills.tsx           # 分类进度条
+│   │   │   ├── Experience.tsx       # 时间线（内部滚动）
+│   │   │   ├── Projects.tsx         # 卡片网格（移动端横向滚动）
+│   │   │   ├── Tools.tsx            # 插件入口 + Drawer
+│   │   │   └── Contact.tsx          # 社交链接
 │   │   ├── effects/
-│   │   │   ├── GlitchText.tsx   # 故障文字效果
-│   │   │   └── ParticleField.tsx # Three.js 粒子系统（懒加载）
+│   │   │   ├── GlitchText.tsx       # 故障文字效果
+│   │   │   └── ParticleField.tsx    # Three.js 粒子系统（懒加载）
 │   │   ├── tools/
-│   │   │   ├── TtsTool.tsx      # TTS（Web Speech API）
-│   │   │   └── ChatTool.tsx     # 数字分身聊天 UI
+│   │   │   ├── TtsTool.tsx          # TTS 多 Provider 语音合成 UI
+│   │   │   ├── TtsTool.test.tsx     # TTS 组件测试
+│   │   │   └── ChatTool.tsx         # 数字分身聊天 UI
 │   │   └── ui/
-│   │       └── ScrollProgress.tsx # 右侧进度指示器
+│   │       └── ScrollProgress.tsx   # 右侧进度指示器
 │   ├── hooks/
-│   │   ├── useReducedMotion.ts   # prefers-reduced-motion 响应
-│   │   └── useActiveSection.ts    # IntersectionObserver 追踪活跃 section
+│   │   ├── useReducedMotion.ts      # prefers-reduced-motion 响应
+│   │   └── useActiveSection.ts      # IntersectionObserver 追踪活跃 section
 │   ├── lib/
-│   │   ├── plugins.ts          # 插件注册表
-│   │   └── utils.ts             # cn() 工具函数（clsx + tailwind-merge）
+│   │   ├── tts-providers/
+│   │   │   ├── types.ts             # Provider 接口 + 请求/响应类型
+│   │   │   ├── mimo.ts              # MiMo Provider 实现 (Chat Completions)
+│   │   │   ├── mimo.test.ts         # MiMo Provider 单元测试
+│   │   │   ├── minimax.ts           # MiniMax Provider 实现 (T2A v2)
+│   │   │   ├── minimax.test.ts      # MiniMax Provider 单元测试
+│   │   │   └── index.ts             # Provider 注册表 getProvider()
+│   │   ├── tts-tags.ts              # TTS 风格/音频标签配置
+│   │   ├── tts-tags.test.ts         # 标签配置测试
+│   │   ├── tts-db.ts                # IndexedDB 持久化
+│   │   ├── tts-db.test.ts           # IndexedDB 测试
+│   │   ├── plugins.ts               # 插件注册表
+│   │   └── utils.ts                 # cn() 工具函数（clsx + tailwind-merge）
 │   └── data/
-│       └── resume.ts           # 单一数据源
+│       └── resume.ts               # 单一数据源
 ├── public/
-│   └── *.svg                   # 占位图片（Next.js 默认）
-├── .env.example                # 环境变量模板
-├── next.config.ts              # 安全头配置
-├── tailwind.config.ts          # Tailwind v4（@theme inline）
-├── tsconfig.json
+│   └── *.svg                       # 占位图片
+├── .env.example                    # 环境变量模板
+├── next.config.ts                  # 安全头配置
 ├── vitest.config.ts
 ├── vitest.setup.ts
 ├── package.json
-├── package-lock.json
 ├── vercel.json
-└── README.md
+├── README.md
+└── DESIGN.md
 ```
 
 ---
@@ -602,9 +747,18 @@ personalWebsite/
 `.env.example` 模板：
 
 ```
-ANTHROPIC_API_KEY=         # Claude API 密钥（必填）
-NEXT_PUBLIC_SITE_URL=https://liyang.dev  # 生产环境 URL
+# Required
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+MIMO_API_KEY=tp-xxxxx
+MINIMAX_API_KEY=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# Optional
+NEXT_PUBLIC_SITE_URL=https://liyang.dev
 ```
+
+所有 Key 均为可选，缺失时对应功能降级：
+- `ANTHROPIC_API_KEY` 缺失 → AI 聊天显示未配置提示
+- `MIMO_API_KEY` / `MINIMAX_API_KEY` 缺失 → TTS 返回 503
 
 ---
 
@@ -613,16 +767,17 @@ NEXT_PUBLIC_SITE_URL=https://liyang.dev  # 生产环境 URL
 部署前检查：
 
 - [ ] `npm run build` 无错误
-- [ ] `npx vitest run` 60/60 测试通过
-- [ ] Vercel 环境变量已配置 `ANTHROPIC_API_KEY`
-- [ ] Gitee 仓库已创建并推送
+- [ ] `npx vitest run` 158/158 测试通过
+- [ ] Vercel 环境变量已配置所有必需 Key
 - [ ] 浏览器 DevTools Lighthouse Performance ≥ 90
 - [ ] 键盘导航（PageDown/Up/Home/End）正常工作
 - [ ] `prefers-reduced-motion` 下动画全部禁用
 - [ ] OG 图片在社交平台预览正常（Facebook/Twitter）
 - [ ] 数字分身 API 在 Edge Runtime 下流式返回正常
-- [ ] TTS 在 Safari/Chrome/Firefox 均正常工作
+- [ ] TTS Provider 切换正常（MiMo ↔ MiniMax）
+- [ ] TTS 音色设计、音色复刻、导演模式功能正常
+- [ ] TTS 历史记录持久化到 IndexedDB
 
 ---
 
-*文档版本：v1.0.0 | 最后更新：2026-05-08*
+*文档版本：v2.0.0 | 最后更新：2026-05-09*
