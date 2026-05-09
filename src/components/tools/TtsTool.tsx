@@ -1,6 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  isSupported,
+  addRecord,
+  getAllRecords,
+  deleteRecord,
+  type TtsHistoryRecord,
+} from "@/lib/tts-db";
 
 interface Voice {
   id: string;
@@ -48,26 +55,57 @@ const AUDIO_TAGS = [
   { label: "气声", tag: "[气声]" },
 ];
 
+interface HistoryItem {
+  id: string;
+  voiceName: string;
+  text: string;
+  audioUrl: string;
+  createdAt: number;
+}
+
 export default function TtsTool() {
   const [text, setText] = useState("你好！欢迎使用语音合成功能。");
   const [selectedVoice, setSelectedVoice] = useState("冰糖");
   const [styleDesc, setStyleDesc] = useState("");
   const [format, setFormat] = useState<"mp3" | "wav" | "pcm16">("mp3");
   const [generating, setGenerating] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const historyRef = useRef<HistoryItem[]>([]);
+  historyRef.current = history;
+  const dbSupportedRef = useRef(isSupported());
 
-  // Clean up audio URLs on unmount
+  // Load history from IndexedDB on mount
+  useEffect(() => {
+    if (!dbSupportedRef.current) return;
+
+    getAllRecords()
+      .then((records) => {
+        const items = records.map((r) => ({
+          id: r.id,
+          voiceName: r.voiceName,
+          text: r.text,
+          audioUrl: URL.createObjectURL(r.audioBlob),
+          createdAt: r.createdAt,
+        }));
+        setHistory(items);
+      })
+      .catch(() => {
+        // Silently ignore DB errors
+      });
+  }, []);
+
+  // Revoke all Blob URLs on unmount
   useEffect(() => {
     return () => {
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
+      historyRef.current.forEach((item) => {
+        URL.revokeObjectURL(item.audioUrl);
+      });
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
       }
@@ -75,7 +113,7 @@ export default function TtsTool() {
         previewAudioRef.current.pause();
       }
     };
-  }, [audioUrl]);
+  }, []);
 
   const insertAtCursor = useCallback((insertText: string) => {
     const textarea = textareaRef.current;
@@ -88,7 +126,6 @@ export default function TtsTool() {
     const newValue = value.slice(0, start) + insertText + value.slice(end);
     setText(newValue);
 
-    // Restore cursor position after the inserted text
     requestAnimationFrame(() => {
       textarea.focus();
       const newCursorPos = start + insertText.length;
@@ -118,7 +155,6 @@ export default function TtsTool() {
 
     if (isPreview) {
       setPreviewing(voiceId);
-      // Clean up previous preview
       if (previewAudioRef.current) {
         previewAudioRef.current.pause();
         previewAudioRef.current = null;
@@ -129,11 +165,6 @@ export default function TtsTool() {
       }
     } else {
       setGenerating(true);
-      // Revoke previous main audio URL before starting new generation
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-        setAudioUrl(null);
-      }
     }
 
     try {
@@ -156,7 +187,6 @@ export default function TtsTool() {
       const data = await res.json();
       const audioData = data.audio;
 
-      // Convert base64 to blob
       const byteCharacters = atob(audioData);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -164,11 +194,10 @@ export default function TtsTool() {
       }
       const byteArray = new Uint8Array(byteNumbers);
 
-      // MiMo API always returns WAV format regardless of requested format
       const blob = new Blob([byteArray], { type: "audio/wav" });
-      const url = URL.createObjectURL(blob);
 
       if (isPreview) {
+        const url = URL.createObjectURL(blob);
         previewUrlRef.current = url;
         const previewAudio = new Audio(url);
         previewAudioRef.current = previewAudio;
@@ -195,7 +224,6 @@ export default function TtsTool() {
         try {
           await previewAudio.play();
         } catch {
-          // Autoplay policy or other play error
           if (previewUrlRef.current === url) {
             URL.revokeObjectURL(url);
             previewUrlRef.current = null;
@@ -205,7 +233,43 @@ export default function TtsTool() {
           setError("无法播放音频，请检查浏览器设置");
         }
       } else {
-        setAudioUrl(url);
+        // Build history record
+        const voice = VOICES.find((v) => v.id === selectedVoice);
+        const record: TtsHistoryRecord = {
+          id: crypto.randomUUID(),
+          voiceId: selectedVoice,
+          voiceName: voice?.name || selectedVoice,
+          text: textToSpeak.trim().slice(0, 50),
+          audioBlob: blob,
+          createdAt: Date.now(),
+        };
+
+        setHistory((prev) => {
+          let next = [...prev];
+          if (next.length >= 5) {
+            const oldest = next.reduce((a, b) => a.createdAt < b.createdAt ? a : b);
+            URL.revokeObjectURL(oldest.audioUrl);
+            if (dbSupportedRef.current) {
+              deleteRecord(oldest.id).catch(() => {});
+            }
+            next = next.filter((item) => item.id !== oldest.id);
+          }
+          const newUrl = URL.createObjectURL(blob);
+          return [
+            {
+              id: record.id,
+              voiceName: record.voiceName,
+              text: record.text,
+              audioUrl: newUrl,
+              createdAt: record.createdAt,
+            },
+            ...next,
+          ];
+        });
+
+        if (dbSupportedRef.current) {
+          addRecord(record).catch(() => {});
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "生成失败";
@@ -220,7 +284,7 @@ export default function TtsTool() {
         setGenerating(false);
       }
     }
-  }, [styleDesc, format, audioUrl]);
+  }, [styleDesc, format, selectedVoice]);
 
   const handleGenerate = useCallback(() => {
     if (!text.trim()) return;
@@ -236,6 +300,20 @@ export default function TtsTool() {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       setSelectedVoice(voiceId);
+    }
+  }, []);
+
+  const handleDeleteHistory = useCallback((id: string) => {
+    setHistory((prev) => {
+      const item = prev.find((h) => h.id === id);
+      if (item) {
+        URL.revokeObjectURL(item.audioUrl);
+      }
+      return prev.filter((h) => h.id !== id);
+    });
+
+    if (dbSupportedRef.current) {
+      deleteRecord(id).catch(() => {});
     }
   }, []);
 
@@ -436,24 +514,42 @@ export default function TtsTool() {
         )}
       </button>
 
-      {/* Audio Player */}
-      {audioUrl && (
-        <div className="p-4 rounded-xl border border-white/5 bg-bg-card">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-neon-cyan/10 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--neon-cyan)" strokeWidth="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
-              </svg>
-            </div>
-            <audio
-              src={audioUrl}
-              controls
-              onError={() => setError("音频加载失败，请重新生成")}
-              className="flex-1 h-8 [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-current-time-display]:text-text-secondary [&::-webkit-media-controls-time-remaining-display]:text-text-secondary"
-            />
+      {/* History List */}
+      {history.length > 0 && (
+        <div>
+          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
+            生成记录
+          </label>
+          <div className="space-y-2">
+            {history.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-bg-card"
+              >
+                <audio
+                  src={item.audioUrl}
+                  controls
+                  className="flex-1 h-8 [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-current-time-display]:text-text-secondary [&::-webkit-media-controls-time-remaining-display]:text-text-secondary"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-text-primary truncate">
+                    {item.voiceName}
+                  </div>
+                  <div className="text-[10px] text-text-muted truncate">
+                    {item.text}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDeleteHistory(item.id)}
+                  aria-label="删除"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-neon-magenta hover:bg-neon-magenta/10 transition-colors shrink-0"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
