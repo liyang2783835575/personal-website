@@ -298,7 +298,7 @@ export default function TtsTool() {
     }
     // MiniMax: map selected style tags to emotion parameter
     if (selectedProviderId === "minimax" && !effectiveStyle && selectedStyles.length > 0) {
-      effectiveStyle = getMiniMaxEmotion(selectedStyles);
+      effectiveStyle = getMiniMaxEmotion(selectedStyles) ?? "";
     }
 
     try {

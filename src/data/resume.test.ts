@@ -86,4 +86,31 @@ describe("resume data", () => {
       expect(project.tech.length).toBeGreaterThan(0);
     }
   });
+
+  it("has at least one featured enterprise project", () => {
+    const featured = resume.projects.filter((p) => p.featured);
+    expect(featured.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("featured project has highlights and metrics", () => {
+    const featured = resume.projects.find((p) => p.featured);
+    expect(featured).toBeDefined();
+    expect(featured!.highlights).toBeDefined();
+    expect(featured!.highlights!.length).toBeGreaterThanOrEqual(3);
+    expect(featured!.metrics).toBeDefined();
+    expect(featured!.metrics!.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("featured project has enterprise category", () => {
+    const featured = resume.projects.find((p) => p.featured);
+    expect(featured!.category).toBe("enterprise");
+  });
+
+  it("each highlight has title and detail", () => {
+    const featured = resume.projects.find((p) => p.featured);
+    for (const h of featured!.highlights!) {
+      expect(h.title).toBeTruthy();
+      expect(h.detail).toBeTruthy();
+    }
+  });
 });

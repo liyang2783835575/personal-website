@@ -281,6 +281,16 @@ body {
   opacity: 1;
 }
 
+/* ===== Featured Project Card ===== */
+.featured-card {
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.15), inset 0 0 20px rgba(255, 0, 255, 0.03);
+  animation: featured-pulse 3s ease-in-out 1;
+}
+@keyframes featured-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 255, 0.15), inset 0 0 20px rgba(255, 0, 255, 0.03); }
+  50% { box-shadow: 0 0 25px rgba(255, 0, 255, 0.3), 0 0 50px rgba(255, 0, 255, 0.15), inset 0 0 30px rgba(255, 0, 255, 0.05); }
+}
+
 /* ===== Typing Cursor ===== */
 .typing-cursor::after {
   content: '|';
