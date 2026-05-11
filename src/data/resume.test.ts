@@ -113,4 +113,25 @@ describe("resume data", () => {
       expect(h.detail).toBeTruthy();
     }
   });
+
+  it("has 3 enterprise projects and 3 personal projects", () => {
+    const enterprise = resume.projects.filter((p) => p.category === "enterprise");
+    const personal = resume.projects.filter((p) => p.category === "personal");
+    expect(enterprise).toHaveLength(3);
+    expect(personal).toHaveLength(3);
+  });
+
+  it("all enterprise projects have highlights and metrics", () => {
+    const enterprise = resume.projects.filter((p) => p.category === "enterprise");
+    for (const p of enterprise) {
+      expect(p.highlights).toBeDefined();
+      expect(p.highlights!.length).toBeGreaterThanOrEqual(3);
+      expect(p.metrics).toBeDefined();
+      expect(p.metrics!.length).toBeGreaterThanOrEqual(3);
+      for (const h of p.highlights!) {
+        expect(h.title).toBeTruthy();
+        expect(h.detail).toBeTruthy();
+      }
+    }
+  });
 });
