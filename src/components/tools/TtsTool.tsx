@@ -14,12 +14,11 @@ import {
 } from "@/lib/tts-providers";
 import {
   STYLE_CATEGORIES,
-  AUDIO_TAGS as AUDIO_TAG_OPTIONS,
+  getAudioTags,
   filterTagsByProvider,
   formatStylePrefix,
+  getMiniMaxEmotion,
 } from "@/lib/tts-tags";
-
-const VISIBLE_TAG_COUNT = 6;
 
 const AUDIO_MIME_MAP: Record<string, string> = {
   mp3: "audio/mpeg",
@@ -52,7 +51,6 @@ export default function TtsTool() {
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [customStyleInput, setCustomStyleInput] = useState("");
   const [customAudioInput, setCustomAudioInput] = useState("");
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   // Voice Design state
   const [voiceDesignDesc, setVoiceDesignDesc] = useState("");
@@ -68,6 +66,9 @@ export default function TtsTool() {
   const [directorRole, setDirectorRole] = useState("");
   const [directorScene, setDirectorScene] = useState("");
   const [directorDirection, setDirectorDirection] = useState("");
+
+  // Audio Tags collapsed by default
+  const [showAudioTags, setShowAudioTags] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -168,13 +169,18 @@ export default function TtsTool() {
     setCustomAudioInput("");
   }, [customAudioInput, insertAtCursor]);
 
+  const providerIdRef = useRef(selectedProviderId);
+  useEffect(() => {
+    providerIdRef.current = selectedProviderId;
+  }, [selectedProviderId]);
+
   const toggleStyleTag = useCallback((tag: string) => {
     setSelectedStyles((prev) => {
       const next = prev.includes(tag)
         ? prev.filter((t) => t !== tag)
         : [...prev, tag];
 
-      const prefix = formatStylePrefix(next);
+      const prefix = formatStylePrefix(next, providerIdRef.current);
       setText((currentText) => {
         const styleRegex = /^\([^)]*\)\s*/;
         if (prefix) {
@@ -197,13 +203,6 @@ export default function TtsTool() {
     toggleStyleTag(tag);
     setCustomStyleInput("");
   }, [customStyleInput, toggleStyleTag]);
-
-  const toggleCategory = useCallback((label: string) => {
-    setExpandedCategories((prev) => ({
-      ...prev,
-      [label]: !prev[label],
-    }));
-  }, []);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -288,7 +287,7 @@ export default function TtsTool() {
       setGenerating(true);
     }
 
-    // Build style from director mode or manual input
+    // Build style from director mode, manual input, or MiniMax emotion tags
     let effectiveStyle = styleDesc;
     if (showDirector) {
       const directorStyle = assembleDirectorStyle();
@@ -296,6 +295,10 @@ export default function TtsTool() {
     }
     if (isVoiceDesign && voiceDesignDesc.trim()) {
       effectiveStyle = voiceDesignDesc.trim();
+    }
+    // MiniMax: map selected style tags to emotion parameter
+    if (selectedProviderId === "minimax" && !effectiveStyle && selectedStyles.length > 0) {
+      effectiveStyle = getMiniMaxEmotion(selectedStyles);
     }
 
     try {
@@ -430,7 +433,7 @@ export default function TtsTool() {
   }, [
     styleDesc, format, selectedVoice, selectedProviderId, selectedModel, voices,
     isVoiceDesign, isVoiceClone, voiceDesignDesc, cloneAudioBase64,
-    showDirector, assembleDirectorStyle,
+    showDirector, assembleDirectorStyle, selectedStyles,
   ]);
 
   const handleGenerate = useCallback(() => {
@@ -446,13 +449,6 @@ export default function TtsTool() {
     if (previewingRef.current) return;
     generateSpeech(voice.id, voice.demoText, true);
   }, [generateSpeech]);
-
-  const handleVoiceKeyDown = useCallback((e: React.KeyboardEvent, voiceId: string) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      setSelectedVoice(voiceId);
-    }
-  }, []);
 
   const handleDeleteHistory = useCallback((id: string) => {
     setHistory((prev) => {
@@ -478,7 +474,7 @@ export default function TtsTool() {
   }, [selectedProviderId]);
 
   const filteredAudioTags = useMemo(
-    () => filterTagsByProvider(AUDIO_TAG_OPTIONS, selectedProviderId),
+    () => getAudioTags(selectedProviderId),
     [selectedProviderId]
   );
 
@@ -486,59 +482,64 @@ export default function TtsTool() {
     : isVoiceClone ? "复刻并生成语音"
     : "生成语音";
 
+  const currentVoice = voices.find((v) => v.id === selectedVoice);
+
   return (
-    <div className="space-y-5">
-      {/* Provider Selector */}
-      <div>
-        <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-          Provider
-        </label>
-        <div className="flex gap-2">
-          {providers.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => handleProviderChange(p.id)}
-              className={`px-4 py-2 rounded-lg text-sm border transition-all ${
-                selectedProviderId === p.id
-                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                  : "border-white/10 text-text-secondary hover:border-white/20"
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
+    <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-4 space-y-4">
+      {/* Row 1: Provider + Model */}
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+            Provider
+          </label>
+          <select
+            value={selectedProviderId}
+            onChange={(e) => handleProviderChange(e.target.value)}
+            className="rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary focus:border-neon-cyan/50 focus:outline-none transition-all font-mono cursor-pointer appearance-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 12px center",
+              paddingRight: "2rem",
+            }}
+          >
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {models.length > 1 && (
+          <div>
+            <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+              模型
+            </label>
+            <div className="flex gap-1.5 flex-wrap">
+              {models.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedModel(m.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition-all ${
+                    selectedModel === m.id
+                      ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+                      : "border-white/10 text-text-secondary hover:border-white/20"
+                  }`}
+                  title={m.description}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Model Selector */}
-      {models.length > 1 && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-            模型
-          </label>
-          <div className="flex gap-2 flex-wrap">
-            {models.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setSelectedModel(m.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${
-                  selectedModel === m.id
-                    ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                    : "border-white/10 text-text-secondary hover:border-white/20"
-                }`}
-                title={m.description}
-              >
-                {m.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Voice Design Panel (when voicedesign model selected) */}
+      {/* Voice Design Panel */}
       {isVoiceDesign && (
         <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
+          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
             音色描述
           </label>
           <textarea
@@ -549,15 +550,15 @@ export default function TtsTool() {
             className="w-full rounded-xl bg-bg-primary border border-neon-purple/20 p-3 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-purple/40 focus:outline-none transition-all resize-none font-mono"
           />
           <p className="text-xs text-text-muted mt-1 font-mono">
-            MiMo 会根据描述即时生成一个全新的音色。不保留音色，每次生成即时设计。
+            MiMo 会根据描述即时生成一个全新的音色。
           </p>
         </div>
       )}
 
-      {/* Voice Clone Panel (when voiceclone model selected) */}
+      {/* Voice Clone Panel */}
       {isVoiceClone && (
         <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
+          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
             音频样本
           </label>
           {!cloneAudioBase64 ? (
@@ -570,14 +571,8 @@ export default function TtsTool() {
                 <path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" />
               </svg>
               <p className="text-sm text-text-secondary font-mono">点击上传音频样本</p>
-              <p className="text-[10px] text-text-muted mt-1 font-mono">支持 mp3, wav, m4a 等格式，最大 5MB</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+              <p className="text-[10px] text-text-muted mt-1 font-mono">mp3, wav, m4a, 最大 5MB</p>
+              <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileUpload} className="hidden" />
             </div>
           ) : (
             <div className="rounded-xl border border-neon-magenta/20 bg-bg-card p-3">
@@ -599,82 +594,56 @@ export default function TtsTool() {
         </div>
       )}
 
-      {/* Voice Selection Cards (hidden for voice design/clone) */}
+      {/* Voice Selector — dropdown (normal mode) */}
       {!isVoiceDesign && !isVoiceClone && (
         <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-            选择音色
+          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+            音色
           </label>
-          <div className="grid grid-cols-3 gap-2">
-            {voices.map((voice) => (
-              <div
-                key={voice.id}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selectedVoice === voice.id}
-                onClick={() => setSelectedVoice(voice.id)}
-                onKeyDown={(e) => handleVoiceKeyDown(e, voice.id)}
-                className={`relative cursor-pointer rounded-xl p-3 border transition-all ${
-                  selectedVoice === voice.id
-                    ? "border-neon-cyan/60 bg-neon-cyan/5 shadow-[var(--glow-xs)]"
-                    : "border-white/5 bg-bg-card hover:border-white/10 hover:bg-bg-card-hover"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-medium text-text-primary">
-                    {voice.name}
-                  </span>
-                  {voice.gender && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-text-muted">
-                      {voice.gender}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-text-muted">{voice.lang}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePreview(voice);
-                    }}
-                    disabled={previewing === voice.id}
-                    className="text-xs px-2.5 py-1 rounded-full border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/15 transition-all disabled:opacity-50"
-                  >
-                    {previewing === voice.id ? "试听中..." : "试听"}
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(e.target.value)}
+              className="flex-1 max-w-md rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary focus:border-neon-cyan/50 focus:outline-none transition-all font-mono cursor-pointer appearance-none"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+                paddingRight: "2rem",
+              }}
+            >
+              {voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.gender ?? "—"}, {v.lang})
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                const voice = voices.find((v) => v.id === selectedVoice);
+                if (voice) handlePreview(voice);
+              }}
+              disabled={previewing === selectedVoice}
+              className="px-3 py-2 rounded-lg text-xs border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/15 transition-all disabled:opacity-50 shrink-0"
+            >
+              {previewing === selectedVoice ? "试听中..." : "试听"}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Style Tags (hidden for voice design/clone since style is handled differently) */}
+      {/* Style Tags — full width, all visible */}
       {!isVoiceDesign && !isVoiceClone && (
         <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-            风格标签（多选，点击切换）
+          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+            风格标签（多选）
           </label>
-          {filteredCategories.map((cat) => {
-            const isExpanded = expandedCategories[cat.label] ?? false;
-            const visibleTags = isExpanded ? cat.tags : cat.tags.slice(0, VISIBLE_TAG_COUNT);
-            const hasMore = cat.tags.length > VISIBLE_TAG_COUNT;
-
-            return (
-              <div key={cat.label} className="mb-2 last:mb-0">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] text-text-muted font-mono">{cat.label}</span>
-                  {hasMore && (
-                    <button
-                      onClick={() => toggleCategory(cat.label)}
-                      className="text-[10px] text-neon-cyan/60 hover:text-neon-cyan transition-colors"
-                    >
-                      {isExpanded ? "收起" : `更多(${cat.tags.length - VISIBLE_TAG_COUNT})`}
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {visibleTags.map((t) => {
+          <div className="space-y-2">
+            {filteredCategories.map((cat) => (
+              <div key={cat.label}>
+                <span className="text-[10px] text-text-muted font-mono mr-2">{cat.label}</span>
+                <span className="inline-flex flex-wrap gap-1">
+                  {cat.tags.map((t) => {
                     const isSelected = selectedStyles.includes(t.tag);
                     return (
                       <button
@@ -690,10 +659,10 @@ export default function TtsTool() {
                       </button>
                     );
                   })}
-                </div>
+                </span>
               </div>
-            );
-          })}
+            ))}
+          </div>
 
           <div className="flex gap-1.5 mt-2">
             <input
@@ -701,13 +670,10 @@ export default function TtsTool() {
               value={customStyleInput}
               onChange={(e) => setCustomStyleInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCustomStyle();
-                }
+                if (e.key === "Enter") { e.preventDefault(); addCustomStyle(); }
               }}
               placeholder="自定义风格标签…"
-              className="flex-1 px-2.5 py-1 rounded-lg bg-bg-primary border border-white/10 text-xs text-text-primary placeholder:text-text-muted focus:border-neon-purple/40 focus:outline-none transition-all font-mono"
+              className="flex-1 max-w-xs px-2.5 py-1 rounded-lg bg-bg-primary border border-white/10 text-xs text-text-primary placeholder:text-text-muted focus:border-neon-purple/40 focus:outline-none transition-all font-mono"
             />
             <button
               onClick={addCustomStyle}
@@ -720,81 +686,71 @@ export default function TtsTool() {
 
           {selectedStyles.length > 0 && (
             <div className="mt-1.5 text-[10px] text-text-muted font-mono">
-              当前: <span className="text-neon-purple">{formatStylePrefix(selectedStyles)}</span>
+              {selectedProviderId === "minimax" ? (
+                <>情绪: <span className="text-neon-purple">{getMiniMaxEmotion(selectedStyles) ?? "—"}</span></>
+              ) : (
+                <>当前: <span className="text-neon-purple">{formatStylePrefix(selectedStyles)}</span></>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Audio Tags */}
+      {/* Audio Tags — collapsed by default */}
       {!isVoiceDesign && !isVoiceClone && (
         <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-            音频标签（点击插入光标位置）
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {filteredAudioTags.map((t) => (
-              <button
-                key={t.tag}
-                onClick={() => insertAtCursor(t.tag)}
-                className="px-2 py-0.5 rounded-md text-xs border border-neon-magenta/40 text-neon-magenta/70 hover:bg-neon-magenta/10 hover:border-neon-magenta/60 hover:text-neon-magenta transition-all"
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => setShowAudioTags(!showAudioTags)}
+            aria-expanded={showAudioTags}
+            className="text-xs font-mono text-text-secondary hover:text-neon-cyan transition-colors flex items-center gap-1"
+          >
+            <span>{showAudioTags ? "▼" : "▶"}</span>
+            音频标签 ({filteredAudioTags.length})
+          </button>
 
-          <div className="flex gap-1.5 mt-2">
-            <input
-              type="text"
-              value={customAudioInput}
-              onChange={(e) => setCustomAudioInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  insertCustomAudioTag();
-                }
-              }}
-              placeholder="自定义音频标签…"
-              className="flex-1 px-2.5 py-1 rounded-lg bg-bg-primary border border-white/10 text-xs text-text-primary placeholder:text-text-muted focus:border-neon-magenta/40 focus:outline-none transition-all font-mono"
-            />
-            <button
-              onClick={insertCustomAudioTag}
-              disabled={!customAudioInput.trim()}
-              className="px-3 py-1 rounded-lg text-xs border border-neon-magenta/30 text-neon-magenta hover:bg-neon-magenta/10 disabled:opacity-30 transition-all"
-            >
-              插入
-            </button>
-          </div>
+          {showAudioTags && (
+            <div className="mt-2 pl-4 border-l border-white/5 space-y-2">
+              <div className="flex flex-wrap gap-1">
+                {filteredAudioTags.map((t) => (
+                  <button
+                    key={t.tag}
+                    onClick={() => insertAtCursor(t.tag)}
+                    className="px-2 py-0.5 rounded-md text-xs border border-neon-magenta/40 text-neon-magenta/70 hover:bg-neon-magenta/10 hover:border-neon-magenta/60 hover:text-neon-magenta transition-all"
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={customAudioInput}
+                  onChange={(e) => setCustomAudioInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); insertCustomAudioTag(); }
+                  }}
+                  placeholder="自定义音频标签…"
+                  className="flex-1 max-w-xs px-2.5 py-1 rounded-lg bg-bg-primary border border-white/10 text-xs text-text-primary placeholder:text-text-muted focus:border-neon-magenta/40 focus:outline-none transition-all font-mono"
+                />
+                <button
+                  onClick={insertCustomAudioTag}
+                  disabled={!customAudioInput.trim()}
+                  className="px-3 py-1 rounded-lg text-xs border border-neon-magenta/30 text-neon-magenta hover:bg-neon-magenta/10 disabled:opacity-30 transition-all"
+                >
+                  插入
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Text Input (hidden for voice design since we use voiceDesignDesc) */}
-      {!isVoiceDesign && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-            合成文本
-          </label>
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="输入要合成的文本，支持风格标签和音频标签..."
-            rows={4}
-            className="w-full rounded-xl bg-bg-primary border border-white/10 p-3 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none focus:shadow-[var(--glow-xs)] transition-all resize-none font-mono"
-          />
-          <p className="text-xs text-text-muted mt-1.5 font-mono">
-            提示: 上方选择风格标签自动添加前缀，点击音频标签插入到光标位置。也支持自定义标签。
-          </p>
-        </div>
-      )}
-
-      {/* Director Mode */}
+      {/* Director Mode — collapsed by default */}
       <div>
         <button
           onClick={() => setShowDirector(!showDirector)}
           aria-expanded={showDirector}
-          aria-controls="director-panel"
           className="text-xs font-mono text-text-secondary hover:text-neon-cyan transition-colors flex items-center gap-1"
         >
           <span>{showDirector ? "▼" : "▶"}</span>
@@ -802,59 +758,51 @@ export default function TtsTool() {
         </button>
 
         {showDirector && (
-          <div
-            id="director-panel"
-            className="mt-3 space-y-3 pl-4 border-l border-white/5"
-          >
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                角色
-              </label>
-              <input
-                type="text"
-                value={directorRole}
-                onChange={(e) => setDirectorRole(e.target.value)}
-                placeholder="例如: 一位年迈的智者"
-                className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                场景
-              </label>
-              <input
-                type="text"
-                value={directorScene}
-                onChange={(e) => setDirectorScene(e.target.value)}
-                placeholder="例如: 在篝火旁讲述古老的传说"
-                className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                指导
-              </label>
-              <input
-                type="text"
-                value={directorDirection}
-                onChange={(e) => setDirectorDirection(e.target.value)}
-                placeholder="例如: 语速缓慢而庄重，声音低沉有回声，在说到'古老'时加重语气"
-                className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-              />
+          <div className="mt-3 space-y-3 pl-4 border-l border-white/5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-mono text-text-secondary mb-1">角色</label>
+                <input
+                  type="text"
+                  value={directorRole}
+                  onChange={(e) => setDirectorRole(e.target.value)}
+                  placeholder="例如: 一位年迈的智者"
+                  className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono text-text-secondary mb-1">场景</label>
+                <input
+                  type="text"
+                  value={directorScene}
+                  onChange={(e) => setDirectorScene(e.target.value)}
+                  placeholder="例如: 在篝火旁讲述古老的传说"
+                  className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono text-text-secondary mb-1">指导</label>
+                <input
+                  type="text"
+                  value={directorDirection}
+                  onChange={(e) => setDirectorDirection(e.target.value)}
+                  placeholder="例如: 语速缓慢而庄重，声音低沉有回声"
+                  className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
+                />
+              </div>
             </div>
             <p className="text-xs text-text-muted font-mono">
-              导演模式将角色、场景、指导组合为自然语言风格描述，通过 user role 传给模型。
+              角色/场景/指导组合为自然语言风格描述，通过 user role 传给模型。
             </p>
           </div>
         )}
       </div>
 
-      {/* Advanced Settings */}
+      {/* Advanced Settings — collapsed by default */}
       <div>
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
           aria-expanded={showAdvanced}
-          aria-controls="advanced-settings-panel"
           className="text-xs font-mono text-text-secondary hover:text-neon-cyan transition-colors flex items-center gap-1"
         >
           <span>{showAdvanced ? "▼" : "▶"}</span>
@@ -862,10 +810,7 @@ export default function TtsTool() {
         </button>
 
         {showAdvanced && (
-          <div
-            id="advanced-settings-panel"
-            className="mt-3 space-y-3 pl-4 border-l border-white/5"
-          >
+          <div className="mt-3 space-y-3 pl-4 border-l border-white/5">
             <div>
               <label className="block text-xs font-mono text-text-secondary mb-1">
                 自然语言风格描述（可选）
@@ -878,11 +823,8 @@ export default function TtsTool() {
                 className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
               />
             </div>
-
             <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                音频格式
-              </label>
+              <label className="block text-xs font-mono text-text-secondary mb-1">音频格式</label>
               <div className="flex gap-2">
                 {(["mp3", "wav", "pcm16"] as const).map((f) => (
                   <button
@@ -902,6 +844,31 @@ export default function TtsTool() {
           </div>
         )}
       </div>
+
+      {/* Text Input (hidden for voice design) */}
+      {!isVoiceDesign && (
+        <div>
+          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+            合成文本
+          </label>
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="输入要合成的文本，支持风格标签和音频标签..."
+            rows={3}
+            className="w-full rounded-xl bg-bg-primary border border-white/10 p-3 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none focus:shadow-[var(--glow-xs)] transition-all resize-none font-mono"
+          />
+        </div>
+      )}
+
+      {/* Voice Design preview */}
+      {isVoiceDesign && voiceDesignDesc && (
+        <div className="p-3 rounded-xl border border-neon-purple/10 bg-bg-card">
+          <p className="text-xs text-text-muted font-mono mb-1 uppercase tracking-wider">音色描述预览</p>
+          <p className="text-sm text-text-primary font-mono whitespace-pre-wrap">{voiceDesignDesc}</p>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -940,7 +907,7 @@ export default function TtsTool() {
         )}
       </button>
 
-      {/* History List */}
+      {/* History */}
       {history.length > 0 && (
         <div>
           <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">

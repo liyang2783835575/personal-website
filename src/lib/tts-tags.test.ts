@@ -2,13 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   STYLE_CATEGORIES,
   AUDIO_TAGS,
+  MIMO_AUDIO_TAGS,
+  MINIMAX_AUDIO_TAGS,
   filterTagsByProvider,
   formatStylePrefix,
+  getMiniMaxEmotion,
+  getAudioTags,
 } from "./tts-tags";
 
 describe("STYLE_CATEGORIES", () => {
-  it("has 6 categories", () => {
-    expect(STYLE_CATEGORIES).toHaveLength(6);
+  it("has 5 categories", () => {
+    expect(STYLE_CATEGORIES).toHaveLength(5);
   });
 
   it("each category has a label and tags", () => {
@@ -72,5 +76,52 @@ describe("formatStylePrefix", () => {
 
   it("joins multiple tags with space", () => {
     expect(formatStylePrefix(["开心", "温柔"])).toBe("(开心 温柔)");
+  });
+
+  it("returns empty string for MiniMax provider (no inline style tags)", () => {
+    expect(formatStylePrefix(["开心", "温柔"], "minimax")).toBe("");
+  });
+
+  it("returns prefix for MiMo provider", () => {
+    expect(formatStylePrefix(["开心"], "mimo")).toBe("(开心)");
+  });
+});
+
+describe("getMiniMaxEmotion", () => {
+  it("maps 开心 to happy", () => {
+    expect(getMiniMaxEmotion(["开心"])).toBe("happy");
+  });
+
+  it("returns first matching emotion", () => {
+    expect(getMiniMaxEmotion(["温柔", "开心", "悲伤"])).toBe("happy");
+  });
+
+  it("returns undefined when no emotion tags match", () => {
+    expect(getMiniMaxEmotion(["温柔", "磁性"])).toBeUndefined();
+  });
+
+  it("returns undefined for empty array", () => {
+    expect(getMiniMaxEmotion([])).toBeUndefined();
+  });
+});
+
+describe("getAudioTags", () => {
+  it("returns MiMo tags by default", () => {
+    expect(getAudioTags()).toBe(MIMO_AUDIO_TAGS);
+  });
+
+  it("returns MiMo tags for mimo provider", () => {
+    expect(getAudioTags("mimo")).toBe(MIMO_AUDIO_TAGS);
+  });
+
+  it("returns MiniMax tags for minimax provider", () => {
+    expect(getAudioTags("minimax")).toBe(MINIMAX_AUDIO_TAGS);
+  });
+
+  it("MiniMax audio tags use (english) format, not [中文]", () => {
+    const tags = getAudioTags("minimax");
+    for (const t of tags) {
+      expect(t.tag).toMatch(/^\([a-z].*\)$/);
+    }
   });
 });

@@ -71,7 +71,7 @@ describe("TtsTool", () => {
   });
 
   describe("provider switching", () => {
-    it("renders provider buttons", () => {
+    it("renders provider options", () => {
       render(<TtsTool />);
       expect(screen.getByText("MiMo")).toBeInTheDocument();
       expect(screen.getByText("MiniMax")).toBeInTheDocument();
@@ -79,15 +79,16 @@ describe("TtsTool", () => {
 
     it("shows MiMo voices by default", () => {
       render(<TtsTool />);
-      expect(screen.getByText("冰糖")).toBeInTheDocument();
-      expect(screen.getByText("茉莉")).toBeInTheDocument();
+      expect(screen.getByText(/冰糖/)).toBeInTheDocument();
+      expect(screen.getByText(/茉莉/)).toBeInTheDocument();
     });
 
     it("switches to MiniMax voices when MiniMax is selected", () => {
       render(<TtsTool />);
-      fireEvent.click(screen.getByText("MiniMax"));
-      expect(screen.getByText("青涩")).toBeInTheDocument();
-      expect(screen.getByText("少女")).toBeInTheDocument();
+      const providerSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+      fireEvent.change(providerSelect, { target: { value: "minimax" } });
+      expect(screen.getByText(/青涩/)).toBeInTheDocument();
+      expect(screen.getByText(/少女/)).toBeInTheDocument();
     });
 
     it("shows model selector for the current provider", () => {
@@ -98,7 +99,8 @@ describe("TtsTool", () => {
 
     it("switches models when provider changes", () => {
       render(<TtsTool />);
-      fireEvent.click(screen.getByText("MiniMax"));
+      const providerSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+      fireEvent.change(providerSelect, { target: { value: "minimax" } });
       expect(screen.getByText("Speech 2.8 HD")).toBeInTheDocument();
     });
 
@@ -131,7 +133,8 @@ describe("TtsTool", () => {
       } as Response);
 
       render(<TtsTool />);
-      fireEvent.click(screen.getByText("MiniMax"));
+      const providerSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+      fireEvent.change(providerSelect, { target: { value: "minimax" } });
 
       const generateBtn = screen.getByText("生成语音").closest("button");
       if (generateBtn) fireEvent.click(generateBtn);
@@ -147,13 +150,12 @@ describe("TtsTool", () => {
   });
 
   describe("voice selection", () => {
-    it("selects a voice when card is clicked", () => {
+    it("selects a voice via dropdown", () => {
       render(<TtsTool />);
-      const voiceCard = screen.getByText("茉莉").closest("div[class*='cursor-pointer']");
-      if (voiceCard) fireEvent.click(voiceCard);
-
-      const selectedCard = screen.getByText("茉莉").closest("div[class*='border-neon-cyan']");
-      expect(selectedCard).toBeInTheDocument();
+      const voiceSelect = screen.getAllByRole("combobox")[1] as HTMLSelectElement;
+      expect(voiceSelect).not.toBeNull();
+      fireEvent.change(voiceSelect, { target: { value: "茉莉" } });
+      expect(voiceSelect.value).toBe("茉莉");
     });
   });
 
@@ -200,8 +202,9 @@ describe("TtsTool", () => {
   });
 
   describe("audio tags", () => {
-    it("renders all audio tags", () => {
+    it("renders all audio tags after expanding", () => {
       render(<TtsTool />);
+      fireEvent.click(screen.getByText(/音频标签/));
       const audioLabels = ["笑", "轻笑", "叹气", "深呼吸", "抽泣", "哽咽", "颤抖", "气声"];
       audioLabels.forEach((label) => {
         expect(screen.getByText(label)).toBeInTheDocument();
@@ -210,6 +213,7 @@ describe("TtsTool", () => {
 
     it("inserts audio tag at cursor position when clicked", () => {
       render(<TtsTool />);
+      fireEvent.click(screen.getByText(/音频标签/));
       const textarea = screen.getByPlaceholderText("输入要合成的文本，支持风格标签和音频标签...") as HTMLTextAreaElement;
       textarea.setSelectionRange(2, 2);
       fireEvent.click(screen.getByText("笑"));
@@ -259,9 +263,10 @@ describe("TtsTool", () => {
   });
 
   describe("helper text", () => {
-    it("shows helper text about tags", () => {
+    it("shows voice design helper text", () => {
       render(<TtsTool />);
-      expect(screen.getByText(/提示:/)).toBeInTheDocument();
+      fireEvent.click(screen.getByText("音色设计"));
+      expect(screen.getByText(/MiMo 会根据描述即时生成一个全新的音色/)).toBeInTheDocument();
     });
   });
 
@@ -403,7 +408,7 @@ describe("TtsTool", () => {
       fireEvent.click(screen.getByText("导演模式"));
       expect(screen.getByPlaceholderText("例如: 一位年迈的智者")).toBeInTheDocument();
       expect(screen.getByPlaceholderText("例如: 在篝火旁讲述古老的传说")).toBeInTheDocument();
-      expect(screen.getByPlaceholderText("例如: 语速缓慢而庄重，声音低沉有回声，在说到'古老'时加重语气")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("例如: 语速缓慢而庄重，声音低沉有回声")).toBeInTheDocument();
     });
 
     it("collapses director mode on second click", () => {

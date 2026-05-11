@@ -74,41 +74,19 @@ const SCENE_TAGS: TagOption[] = [
   { label: "教学", tag: "教学" },
 ];
 
-// MiniMax-specific English paralinguistic tags
-const MINIMAX_PARA_TAGS: TagOption[] = [
-  { label: "Laughs", tag: "laughs", provider: "minimax" },
-  { label: "Chuckles", tag: "chuckles", provider: "minimax" },
-  { label: "Sighs", tag: "sighs", provider: "minimax" },
-  { label: "Cries", tag: "cries", provider: "minimax" },
-  { label: "Sobs", tag: "sobs", provider: "minimax" },
-  { label: "Whispers", tag: "whispers", provider: "minimax" },
-  { label: "Shouts", tag: "shouts", provider: "minimax" },
-  { label: "Breathes", tag: "breathes heavily", provider: "minimax" },
-  { label: "Gasps", tag: "gasps", provider: "minimax" },
-  { label: "Sniffs", tag: "sniffs", provider: "minimax" },
-  { label: "Clears throat", tag: "clears throat", provider: "minimax" },
-  { label: "Stammers", tag: "stammers", provider: "minimax" },
-  { label: "Giggles", tag: "giggles", provider: "minimax" },
-  { label: "Groans", tag: "groans", provider: "minimax" },
-  { label: "Yawns", tag: "yawns", provider: "minimax" },
-  { label: "Coughs", tag: "coughs", provider: "minimax" },
-];
-
 export const STYLE_CATEGORIES: TagCategory[] = [
   { label: "情绪", tags: EMOTION_TAGS },
   { label: "声音风格", tags: VOICE_STYLE_TAGS },
   { label: "角色", tags: CHARACTER_TAGS },
   { label: "方言", tags: DIALECT_TAGS },
   { label: "场景", tags: SCENE_TAGS },
-  { label: "MiniMax 副语言", tags: MINIMAX_PARA_TAGS },
 ];
 
 // ========== Audio Tags (inline) ==========
-// Both providers: [标签] format inserted at cursor position
-// MiMo: [笑] [轻笑] etc. as audio event tags
-// MiniMax: also supports similar inline event tags
+// MiMo: [笑] [轻笑] format — Chinese square brackets, inserted at cursor position
+// MiniMax: (laughs) (sighs) format — English parentheses, inline in text
 
-export const AUDIO_TAGS: TagOption[] = [
+export const MIMO_AUDIO_TAGS: TagOption[] = [
   { label: "笑", tag: "[笑]" },
   { label: "轻笑", tag: "[轻笑]" },
   { label: "大笑", tag: "[大笑]" },
@@ -127,6 +105,33 @@ export const AUDIO_TAGS: TagOption[] = [
   { label: "喊叫", tag: "[喊叫]" },
 ];
 
+// MiniMax paralinguistic tags per official docs: https://platform.minimaxi.com/docs/api-reference/speech-t2a-http
+export const MINIMAX_AUDIO_TAGS: TagOption[] = [
+  { label: "笑", tag: "(laughs)" },
+  { label: "轻笑", tag: "(chuckle)" },
+  { label: "叹气", tag: "(sighs)" },
+  { label: "深呼吸", tag: "(breath)" },
+  { label: "喘气", tag: "(pant)" },
+  { label: "抽泣", tag: "(cries)" },
+  { label: "哽咽", tag: "(sobs)" },
+  { label: "倒吸气", tag: "(gasps)" },
+  { label: "吸鼻子", tag: "(sniffs)" },
+  { label: "清嗓子", tag: "(clear-throat)" },
+  { label: "咳嗽", tag: "(coughs)" },
+  { label: "呻吟", tag: "(groans)" },
+  { label: "哼唱", tag: "(humming)" },
+  { label: "嘶嘶声", tag: "(hissing)" },
+  { label: "嗯", tag: "(emm)" },
+  { label: "喷嚏", tag: "(sneezes)" },
+];
+
+export const AUDIO_TAGS = MIMO_AUDIO_TAGS; // legacy alias
+
+export function getAudioTags(providerId?: string): TagOption[] {
+  if (providerId === "minimax") return MINIMAX_AUDIO_TAGS;
+  return MIMO_AUDIO_TAGS;
+}
+
 // ========== Helpers ==========
 
 export function filterTagsByProvider(
@@ -137,7 +142,35 @@ export function filterTagsByProvider(
   return tags.filter((t) => !t.provider || t.provider === providerId);
 }
 
-export function formatStylePrefix(tags: string[]): string {
+// MiniMex-specific emotion mapping: Chinese tags → MiniMax emotion enum values
+const MINIMAX_EMOTION_MAP: Record<string, string> = {
+  "开心": "happy",
+  "悲伤": "sad",
+  "愤怒": "angry",
+  "恐惧": "fearful",
+  "厌恶": "disgusted",
+  "惊讶": "surprised",
+  "中性": "calm",
+  "兴奋": "happy",
+  "紧张": "fearful",
+  "失望": "sad",
+  "骄傲": "happy",
+  "嫉妒": "angry",
+};
+
+export function getMiniMaxEmotion(styleTags: string[]): string | undefined {
+  for (const tag of styleTags) {
+    const emotion = MINIMAX_EMOTION_MAP[tag];
+    if (emotion) return emotion;
+  }
+  return undefined;
+}
+
+// MiniMax doesn't support inline style tags — only MiMo does
+// MiniMax: emotion set via voice_setting.emotion parameter
+// MiMo: (标签1 标签2) prefix in text
+export function formatStylePrefix(tags: string[], providerId?: string): string {
   if (tags.length === 0) return "";
+  if (providerId === "minimax") return ""; // MiniMax reads inline tags literally
   return `(${tags.join(" ")})`;
 }

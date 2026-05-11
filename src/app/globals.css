@@ -312,6 +312,16 @@ body {
   100% { background-position: 200% 0; }
 }
 
+/* ===== Tool Overlay ===== */
+body.tool-overlay-open {
+  overflow: hidden;
+}
+
+@keyframes overlay-slide-up {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
 /* ===== Floating Grid Background ===== */
 .cyber-grid {
   background-image:

@@ -103,9 +103,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-screen bg-bg-primary text-text-primary">
-        {/* Scanline overlay — cyberpunk visual effect */}
-        <div className="scanline-overlay" aria-hidden="true" />
-
         {children}
 
         <script
