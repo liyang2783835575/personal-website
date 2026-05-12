@@ -119,10 +119,115 @@ npm run test:coverage  # 覆盖率报告
 
 ## Deployment
 
-推荐 Vercel。在 Vercel 项目设置中配置所需环境变量。
+### 前置条件
+
+- Node.js ≥ 18（推荐 20 LTS）
+- Git
+- GitHub 账号
+- Vercel 账号（用 GitHub 登录即可）
+- 域名（可选，Vercel 提供免费 `*.vercel.app` 域名）
+
+### 方式一：Vercel Git Integration（推荐，push 自动部署）
+
+#### 1. 克隆代码
 
 ```bash
-npm run build
-# 或
-vercel
+git clone https://gitee.com/lyzwd/personal-website.git
+cd personal-website
 ```
+
+#### 2. 创建 GitHub 仓库并推送
+
+```bash
+# 安装 GitHub CLI（如果没有）
+winget install GitHub.cli        # Windows
+# brew install gh                # macOS
+
+# 登录
+gh auth login
+
+# 创建私有仓库并推送
+gh repo create personal-website --private --source=. --push
+```
+
+#### 3. Vercel 关联仓库
+
+1. 打开 https://vercel.com → 用 GitHub 账号登录
+2. **Add New...** → **Project** → 找到 `personal-website` → **Import**
+3. Framework 自动识别为 Next.js，不用改
+4. **先不点 Deploy**，先配环境变量
+
+#### 4. 配置环境变量
+
+在同一个页面展开 **Environment Variables**，逐个添加：
+
+| Name | Value | Environment |
+|------|-------|-------------|
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | Production, Preview, Development |
+| `MIMO_API_KEY` | `tp-...` | Production, Preview, Development |
+| `MINIMAX_API_KEY` | `eyJhbG...` | Production, Preview, Development |
+| `NEXT_PUBLIC_SITE_URL` | `https://liyang.dev` | Production only |
+
+> Key 来源：本地 `.env.local` 文件，或对应平台的 API 控制台。
+> 缺失任何 Key 不影响构建，对应功能降级（AI 聊天显示未配置提示，TTS 返回 503）。
+
+#### 5. 部署
+
+点 **Deploy**，等待 1-2 分钟。构建成功后获得预览域名 `personal-website-xxx.vercel.app`。
+
+#### 6. 绑定自定义域名（可选）
+
+1. Vercel Dashboard → 项目 → **Settings** → **Domains**
+2. 输入 `liyang.dev` → **Add**
+3. 配置 DNS（在你的域名注册商操作）：
+   - **A 记录**：主机 `@`，值 `76.76.21.21`
+   - **CNAME 记录**：主机 `www`，值 `cname.vercel-dns.com`
+4. DNS 生效通常几分钟到几小时
+
+之后每次 `git push` 到 GitHub 自动触发部署。
+
+### 方式二：Vercel CLI 手动部署
+
+适合不想关联 GitHub 的场景。
+
+```bash
+# 安装 Vercel CLI
+npm install -g vercel
+
+# 登录
+vercel login
+
+# 首次部署（交互式，会引导你关联/创建项目）
+vercel
+
+# 设置环境变量
+vercel env add ANTHROPIC_API_KEY
+vercel env add MIMO_API_KEY
+vercel env add MINIMAX_API_KEY
+vercel env add NEXT_PUBLIC_SITE_URL
+
+# 生产部署
+vercel --prod
+```
+
+### 本地构建验证
+
+部署前先在本地确认构建和测试通过：
+
+```bash
+npm install
+npm run build        # 生产构建
+npm run test:run     # 全部测试
+npm run start        # 本地预览生产版本 (http://localhost:3000)
+```
+
+### 部署后检查清单
+
+- [ ] 首页正常加载，3D 粒子背景显示
+- [ ] 所有 section 滚动动画正常
+- [ ] 项目模块：Featured 卡片展开/折叠正常
+- [ ] 项目模块：运营中心/产品中心展开详情正常
+- [ ] TTS 语音合成可用（需要 MIMO/MiniMax Key）
+- [ ] AI 数字分身聊天可用（需要 Anthropic Key）
+- [ ] 浏览器控制台无 CSP 错误
+- [ ] 移动端响应式布局正常

@@ -650,21 +650,62 @@ Content-Security-Policy: default-src 'self';
 
 ### 10.1 Vercel 部署
 
-1. `vercel.json` 已配置：`{ "framework": "nextjs" }`
-2. 环境变量（Vercel Dashboard 设置）：
-   - `ANTHROPIC_API_KEY`：Claude API 密钥
-   - `MIMO_API_KEY`：MiMo TTS API 密钥
-   - `MINIMAX_API_KEY`：MiniMax TTS API 密钥
-   - `NEXT_PUBLIC_SITE_URL`：生产环境 URL（https://liyang.dev）
-3. 构建命令：`npm run build`
-4. 输出目录：`.next`（Next.js 默认）
+#### 方式一：Git Integration（推荐）
 
-### 10.2 Edge Runtime
+1. 代码推送到 GitHub（`gh repo create personal-website --private --source=. --push`）
+2. Vercel Dashboard → Add New Project → Import GitHub 仓库
+3. Framework 自动识别为 Next.js
+4. 配置环境变量（见 10.3）
+5. Deploy → 获得 `*.vercel.app` 域名
+6. 之后每次 `git push` 自动触发部署
+
+#### 方式二：CLI 手动部署
+
+```bash
+npm install -g vercel
+vercel login
+vercel                          # 首次交互式部署
+vercel env add ANTHROPIC_API_KEY
+vercel env add MIMO_API_KEY
+vercel env add MINIMAX_API_KEY
+vercel env add NEXT_PUBLIC_SITE_URL
+vercel --prod                   # 生产部署
+```
+
+### 10.2 自定义域名
+
+Vercel Dashboard → Settings → Domains → 添加域名。DNS 配置：
+
+| 类型 | 主机 | 值 |
+|------|------|-----|
+| A | @ | 76.76.21.21 |
+| CNAME | www | cname.vercel-dns.com |
+
+### 10.3 环境变量
+
+| 变量 | 必需 | 说明 | 缺失时行为 |
+|------|------|------|------------|
+| `ANTHROPIC_API_KEY` | 推荐 | Claude API 密钥 | AI 聊天显示未配置提示 |
+| `MIMO_API_KEY` | 推荐 | MiMo TTS API 密钥 | TTS 返回 503 |
+| `MINIMAX_API_KEY` | 推荐 | MiniMax TTS API 密钥 | TTS 返回 503 |
+| `NEXT_PUBLIC_SITE_URL` | 否 | 生产 URL（OG 图片） | 默认 `https://liyang.dev` |
+
+### 10.4 Edge Runtime
 
 `/api/chat` 和 `/api/tts` 使用 Edge Runtime，获得：
 - 全球边缘节点低延迟
 - 冷启动 < 50ms
 - 免费额度足够个人站
+
+### 10.5 部署后验证
+
+- [ ] 首页加载正常，3D 粒子背景显示
+- [ ] 所有 section 滚动动画正常
+- [ ] 项目卡片展开/折叠正常
+- [ ] TTS 语音合成可用
+- [ ] AI 数字分身聊天可用
+- [ ] 浏览器控制台无 CSP 错误
+- [ ] 移动端响应式正常
 
 ---
 
