@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { listChatProviders, type ChatProvider } from "@/lib/chat-providers";
 
 interface Message {
   id: string;
@@ -9,16 +10,41 @@ interface Message {
 }
 
 export default function ChatTool() {
+  const providers = useMemo(() => listChatProviders(), []);
+  const [selectedProviderId, setSelectedProviderId] = useState(providers[0]?.id ?? "minimax");
+  const [selectedModel, setSelectedModel] = useState(providers[0]?.defaultModel ?? "");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
+
+  const currentProvider = useMemo(
+    () => providers.find((p) => p.id === selectedProviderId) ?? providers[0],
+    [providers, selectedProviderId],
+  );
+
+  const models = useMemo(() => currentProvider?.models ?? [], [currentProvider]);
+
+  const handleProviderChange = useCallback(
+    (providerId: string) => {
+      const provider = providers.find((p) => p.id === providerId);
+      if (provider) {
+        setSelectedProviderId(providerId);
+        setSelectedModel(provider.defaultModel);
+      }
+    },
+    [providers],
+  );
 
   useEffect(() => {
     if (messages.length !== prevLengthRef.current) {
       prevLengthRef.current = messages.length;
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      const container = scrollContainerRef.current;
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+      }
     }
   }, [messages]);
 
@@ -31,7 +57,6 @@ export default function ChatTool() {
     setInput("");
     setLoading(true);
 
-    // Use ref to avoid stale closure in async operations
     const currentMessages = messages;
     const assistantId = crypto.randomUUID();
 
@@ -44,10 +69,21 @@ export default function ChatTool() {
             role: m.role,
             content: m.content,
           })),
+          provider: selectedProviderId,
+          model: selectedModel,
         }),
       });
 
-      if (!res.ok) throw new Error("Chat request failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const errorMsg =
+          res.status === 429
+            ? "请求太频繁，请稍后再试。"
+            : body?.error === "Service unavailable"
+              ? "AI 服务未配置，请联系站长。"
+              : `请求失败 (${res.status})`;
+        throw new Error(errorMsg);
+      }
 
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No reader");
@@ -68,36 +104,27 @@ export default function ChatTool() {
           const updated = [...prev];
           const lastIndex = updated.length - 1;
           if (lastIndex >= 0 && updated[lastIndex].id === assistantId) {
-            updated[lastIndex] = {
-              ...updated[lastIndex],
-              content: assistantContent,
-            };
+            updated[lastIndex] = { ...updated[lastIndex], content: assistantContent };
           }
           return updated;
         });
       }
-    } catch {
-      // Keep partial content if any was received, otherwise show error
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "抱歉，出了点问题，请稍后再试。";
       setMessages((prev) => {
         const lastIndex = prev.length - 1;
         if (lastIndex >= 0 && prev[lastIndex].id === assistantId && prev[lastIndex].content) {
           return [
             ...prev.slice(0, -1),
-            {
-              ...prev[lastIndex],
-              content: prev[lastIndex].content + "\n\n[连接出现问题，请稍后再试]",
-            },
+            { ...prev[lastIndex], content: prev[lastIndex].content + `\n\n[${errorMsg}]` },
           ];
         }
-        return [
-          ...prev,
-          { id: crypto.randomUUID(), role: "assistant", content: "抱歉，出了点问题，请稍后再试。" },
-        ];
+        return [...prev, { id: crypto.randomUUID(), role: "assistant", content: errorMsg }];
       });
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages]);
+  }, [input, loading, messages, selectedProviderId, selectedModel]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -106,16 +133,12 @@ export default function ChatTool() {
     }
   };
 
-  const quickQuestions = [
-    "你是做什么的？",
-    "你的技术栈是什么？",
-    "怎么联系你？",
-  ];
+  const quickQuestions = ["你是做什么的？", "你的技术栈是什么？", "怎么联系你？"];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[40%_60%] h-[550px]">
-      {/* Left Column — Profile Card */}
-      <div className="overflow-y-auto p-4 border-r border-white/5 flex flex-col">
+      {/* Left Column */}
+      <div className="overflow-y-auto p-4 border-r border-white/5 flex flex-col chat-scroll">
         <div className="text-center mb-6">
           <div className="text-5xl mb-3">🤖</div>
           <h3 className="text-lg font-bold text-text-primary font-mono mb-1">
@@ -141,8 +164,63 @@ export default function ChatTool() {
         {/* Divider */}
         <div className="neon-line mb-6" />
 
+        {/* Provider + Model Selector */}
+        <div className="mb-6 space-y-3">
+          <div>
+            <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+              模型提供商
+            </label>
+            <select
+              value={selectedProviderId}
+              onChange={(e) => handleProviderChange(e.target.value)}
+              disabled={loading}
+              className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary focus:border-neon-cyan/50 focus:outline-none transition-all font-mono cursor-pointer appearance-none disabled:opacity-50"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+                paddingRight: "2rem",
+              }}
+            >
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.icon} {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {models.length > 1 && (
+            <div>
+              <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
+                模型
+              </label>
+              <div className="flex gap-1.5 flex-wrap">
+                {models.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedModel(m.id)}
+                    disabled={loading}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition-all disabled:opacity-50 ${
+                      selectedModel === m.id
+                        ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+                        : "border-white/10 text-text-secondary hover:border-white/20"
+                    }`}
+                    title={m.description}
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="neon-line mb-6" />
+
         {/* Quick Questions */}
-        <div>
+        <div className="mb-6">
           <h4 className="text-xs font-mono text-text-secondary mb-3 uppercase tracking-wider">
             快捷问题
           </h4>
@@ -150,9 +228,7 @@ export default function ChatTool() {
             {quickQuestions.map((q) => (
               <button
                 key={q}
-                onClick={() => {
-                  setInput(q);
-                }}
+                onClick={() => setInput(q)}
                 disabled={loading}
                 className="w-full text-left px-3 py-2 rounded-lg text-sm font-mono text-text-secondary bg-bg-card border border-white/5 hover:border-neon-cyan/20 hover:text-neon-cyan transition-all disabled:opacity-30"
               >
@@ -162,9 +238,8 @@ export default function ChatTool() {
           </div>
         </div>
 
-        {/* Empty state hint (only when no messages) */}
         {messages.length === 0 && (
-          <div className="mt-auto pt-6">
+          <div className="mt-auto">
             <p className="text-[10px] text-text-muted text-center font-mono">
               点击上方问题或输入你的问题开始对话
             </p>
@@ -174,8 +249,7 @@ export default function ChatTool() {
 
       {/* Right Column — Chat */}
       <div className="flex flex-col overflow-hidden p-4">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1 chat-scroll">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -202,7 +276,6 @@ export default function ChatTool() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
         <div className="flex gap-2">
           <input
             type="text"

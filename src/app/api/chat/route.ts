@@ -1,21 +1,21 @@
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { resume } from "@/data/resume";
 import { z } from "zod";
+import { getChatProvider, listChatProviders } from "@/lib/chat-providers";
 
 export const runtime = "edge";
 
-// Zod schema for message validation
+const PROVIDER_IDS = listChatProviders().map((p) => p.id);
+
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string().min(1).max(4000),
 });
 
 const requestSchema = z.object({
-  messages: z
-    .array(messageSchema)
-    .min(1)
-    .max(20),
+  messages: z.array(messageSchema).min(1).max(20),
+  provider: z.enum(PROVIDER_IDS as [string, ...string[]]).optional(),
+  model: z.string().optional(),
 });
 
 // In-memory rate limiting: 10 requests/minute per IP
@@ -93,16 +93,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // API key check
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.error("[Chat API] ANTHROPIC_API_KEY not configured");
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json", ...rateLimitHeaders },
-    });
-  }
-
   // Input validation
   let body: unknown;
   try {
@@ -125,39 +115,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { messages } = parseResult.data;
+  const { messages, provider: providerId, model } = parseResult.data;
+
+  // Resolve provider
+  const provider = getChatProvider(providerId ?? "minimax");
+  if (!provider) {
+    return new Response(JSON.stringify({ error: "Unknown provider" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json", ...rateLimitHeaders },
+    });
+  }
+
+  const selectedModel = model ?? provider.defaultModel;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const stream = await provider.stream(messages, selectedModel, SYSTEM_PROMPT);
 
-    const stream = await client.messages.stream({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages,
-    });
-
-    const encoder = new TextEncoder();
-    const readable = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const event of stream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              controller.enqueue(encoder.encode(event.delta.text));
-            }
-          }
-          controller.close();
-        } catch (streamError) {
-          console.error("[Chat API] Stream error:", streamError);
-          controller.error(streamError);
-        }
-      },
-    });
-
-    return new Response(readable, {
+    return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
@@ -165,7 +139,16 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("[Chat API] Error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[Chat API] ${provider.id} error:`, message);
+
+    if (message.includes("not configured")) {
+      return new Response(JSON.stringify({ error: "Service unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", ...rateLimitHeaders },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...rateLimitHeaders },

@@ -153,6 +153,25 @@ body {
   background: var(--neon-magenta);
 }
 
+/* Chat tool subtle scrollbar */
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+.chat-scroll::-webkit-scrollbar {
+  width: 4px !important;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 2px !important;
+}
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
 /* ===== Selection ===== */
 ::selection {
   background: rgba(0, 255, 249, 0.3);
