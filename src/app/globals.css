@@ -358,3 +358,43 @@ body.tool-overlay-open {
     linear-gradient(90deg, rgba(0, 255, 249, 0.03) 1px, transparent 1px);
   background-size: 60px 60px;
 }
+
+/* ===== color-mix() fallback for older mobile browsers ===== */
+@supports not (color: color-mix(in lab, red, red)) {
+  [class~="bg-neon-cyan/5"] { background-color: rgba(0, 255, 249, 0.05) !important; }
+  [class~="bg-neon-cyan/10"] { background-color: rgba(0, 255, 249, 0.1) !important; }
+  [class~="bg-neon-cyan/[0.02]"] { background-color: rgba(0, 255, 249, 0.02) !important; }
+  [class~="bg-neon-magenta/5"] { background-color: rgba(255, 0, 255, 0.05) !important; }
+  [class~="bg-neon-magenta/10"] { background-color: rgba(255, 0, 255, 0.1) !important; }
+  [class~="bg-neon-magenta/[0.02]"] { background-color: rgba(255, 0, 255, 0.02) !important; }
+  [class~="bg-neon-purple/10"] { background-color: rgba(176, 38, 255, 0.1) !important; }
+  [class~="bg-neon-purple/15"] { background-color: rgba(176, 38, 255, 0.15) !important; }
+  [class~="bg-white/5"] { background-color: rgba(255, 255, 255, 0.05) !important; }
+  [class~="bg-white/10"] { background-color: rgba(255, 255, 255, 0.1) !important; }
+
+  [class~="border-neon-cyan/15"] { border-color: rgba(0, 255, 249, 0.15) !important; }
+  [class~="border-neon-cyan/20"] { border-color: rgba(0, 255, 249, 0.2) !important; }
+  [class~="border-neon-cyan/30"] { border-color: rgba(0, 255, 249, 0.3) !important; }
+  [class~="border-neon-cyan/40"] { border-color: rgba(0, 255, 249, 0.4) !important; }
+  [class~="border-neon-cyan/60"] { border-color: rgba(0, 255, 249, 0.6) !important; }
+  [class~="border-neon-magenta/15"] { border-color: rgba(255, 0, 255, 0.15) !important; }
+  [class~="border-neon-magenta/20"] { border-color: rgba(255, 0, 255, 0.2) !important; }
+  [class~="border-neon-magenta/30"] { border-color: rgba(255, 0, 255, 0.3) !important; }
+  [class~="border-neon-magenta/40"] { border-color: rgba(255, 0, 255, 0.4) !important; }
+  [class~="border-neon-purple/10"] { border-color: rgba(176, 38, 255, 0.1) !important; }
+  [class~="border-neon-purple/20"] { border-color: rgba(176, 38, 255, 0.2) !important; }
+  [class~="border-neon-purple/30"] { border-color: rgba(176, 38, 255, 0.3) !important; }
+  [class~="border-neon-purple/40"] { border-color: rgba(176, 38, 255, 0.4) !important; }
+  [class~="border-neon-purple/60"] { border-color: rgba(176, 38, 255, 0.6) !important; }
+  [class~="border-white/5"] { border-color: rgba(255, 255, 255, 0.05) !important; }
+  [class~="border-white/10"] { border-color: rgba(255, 255, 255, 0.1) !important; }
+  [class~="border-neon-pink/50"] { border-color: rgba(255, 110, 199, 0.5) !important; }
+
+  [class~="text-neon-cyan/10"] { color: rgba(0, 255, 249, 0.1) !important; }
+  [class~="text-neon-cyan/80"] { color: rgba(0, 255, 249, 0.8) !important; }
+  [class~="text-neon-magenta/70"] { color: rgba(255, 0, 255, 0.7) !important; }
+  [class~="text-neon-purple/60"] { color: rgba(176, 38, 255, 0.6) !important; }
+  [class~="text-text-secondary/50"] { color: rgba(136, 136, 170, 0.5) !important; }
+  [class~="text-text-secondary/70"] { color: rgba(136, 136, 170, 0.7) !important; }
+  [class~="text-text-secondary/80"] { color: rgba(136, 136, 170, 0.8) !important; }
+}
