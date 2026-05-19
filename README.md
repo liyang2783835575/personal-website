@@ -231,3 +231,6 @@ npm run start        # 本地预览生产版本 (http://localhost:3000)
 - [ ] AI 数字分身聊天可用（需要 Anthropic Key）
 - [ ] 浏览器控制台无 CSP 错误
 - [ ] 移动端响应式布局正常
+
+---
+*Last synced to GitHub via OpenClaw agent on 2026-05-19 23:02:15*
