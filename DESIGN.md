@@ -19,13 +19,13 @@
 | 样式 | Tailwind CSS v4 | — |
 | 动画 | Framer Motion | 12.38.0 |
 | 3D 背景 | Three.js + @react-three/fiber + @react-three/drei | — |
-| AI 对话 | @anthropic-ai/sdk (Claude API) | 0.95.1 |
+| AI 对话 | MiMo API + MiniMax API (双 Provider，OpenAI 兼容格式) | — |
 | TTS | MiMo API + MiniMax API (双 Provider) | — |
 | 存储 | IndexedDB (TTS 历史记录) | — |
 | 输入校验 | Zod | 4.4.3 |
 | 工具函数 | clsx + tailwind-merge | — |
 | 测试 | Vitest + @testing-library/react | 4.1.5 / 16.3.2 |
-| 部署 | Vercel (Edge Runtime) | — |
+| 部署 | Cloudflare Pages (Edge Runtime) | — |
 
 ### 1.3 约束条件
 
@@ -357,13 +357,48 @@ interface Plugin {
 - IndexedDB 不可用时自动降级为内存模式
 - 写入失败时回滚状态
 
-### 4.9 ChatTool（数字分身）
+### 4.9 ChatTool — 多 Provider 数字分身聊天
 
+#### 4.9.1 Provider 架构
+
+采用 **ChatProvider 接口抽象**，支持 MiMo 和 MiniMax 两个 Provider 切换：
+
+```
+┌──────────────────────────────────────┐
+│            ChatTool.tsx              │
+│  (UI: provider/model selector)      │
+└──────────────┬───────────────────────┘
+               │ POST /api/chat
+┌──────────────▼───────────────────────┐
+│        route.ts (Edge Runtime)       │
+│  Zod 校验 → getChatProvider() → 路由 │
+└──────┬────────────────────┬──────────┘
+       │                    │
+┌──────▼──────┐   ┌────────▼──────────┐
+│  mimo.ts    │   │  minimax.ts       │
+│  Chat       │   │  Chat             │
+│  Completions│   │  Completions      │
+└─────────────┘   └───────────────────┘
+```
+
+#### 4.9.2 MiMo vs MiniMax
+
+| | MiMo | MiniMax |
+|---|---|---|
+| 端点 | `POST /v1/chat/completions` | `POST /v1/chat/completions` |
+| 格式 | OpenAI 兼容 (SSE) | OpenAI 兼容 (SSE) |
+| Auth Header | `api-key` | `Authorization: Bearer` |
+| 模型 | `mimo-v2.5-pro` / `mimo-v2-flash` | `MiniMax-M2.7` / `MiniMax-M2.5` |
+
+#### 4.9.3 ChatTool UI
+
+- Provider + Model 下拉选择器，支持 4 个模型切换
 - 使用 `/api/chat` 流式 API，ReadableStream 逐帧渲染
 - 消息历史保存在 React state，每次发送将历史消息一起发送到 API
 - 避免陈旧闭包：使用 `useRef` 保存当前消息列表快照
-- 错误处理：部分内容时保留已接收内容并追加错误提示
+- 错误处理：区分 429/500/网络错误，显示不同提示；部分内容时保留已接收内容并追加错误提示
 - 加载状态：3 个跳动的圆点动画
+- 快捷提问按钮：预设常见问题
 
 ### 4.10 Contact Section
 
@@ -397,19 +432,23 @@ interface Plugin {
   messages: {
     role: "user" | "assistant";
     content: string;  // 1-4000 chars
-  }[]
+  }[];
+  provider?: "mimo" | "minimax";  // Provider 选择，默认 "minimax"
+  model?: string;                  // 模型 ID，默认 provider 的 defaultModel
 }
 ```
 
-**响应**：Streaming `text/plain`，每帧为纯文本 token
+**响应**：Streaming `text/plain`，每帧为纯文本 token (SSE)
 
 **实现细节**
 - Edge Runtime（`export const runtime = 'edge'`）
-- Zod 输入校验：`messages` 数组最多 20 条，每条 content 1-4000 字符
+- Zod 输入校验：`messages` 数组最多 20 条，每条 content 1-4000 字符，`provider` 枚举校验
+- 根据 `provider` 参数路由到对应 ChatProvider
 - System prompt 注入简历数据（`resume.bio`、`resume.experience`、`resume.skills`）
 - 速率限制：内存 Map，10 req/min/IP
 - CORS 校验：对比 `Origin` / `Referer` 头部与 `host`
-- 所有异常返回通用错误 JSON，HTTP 500
+- Provider 未配置 Key 返回 503（不泄漏具体原因）
+- Provider API 错误返回 500
 - JSON-LD sanitize：`<` 替换为 `\u003c`
 
 ### 5.2 POST `/api/tts` — TTS 语音合成
@@ -584,13 +623,16 @@ animate={inView ? { opacity: 1, y: 0 } : {}}
 
 ```typescript
 Content-Security-Policy: default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval';
+  script-src 'self' 'unsafe-eval' 'unsafe-inline';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-  img-src 'self' data: https:;
   font-src 'self' https://fonts.gstatic.com;
-  connect-src 'self' https://api.anthropic.com https://api.minimaxi.com https://token-plan-cn.xiaomimimo.com;
+  img-src 'self' data: blob:;
+  connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://api.minimaxi.com https://token-plan-cn.xiaomimimo.com;
+  media-src 'self' blob:;
   frame-src 'none';
   object-src 'none';
+  base-uri 'self';
+  form-action 'self';
 ```
 
 ### 8.2 安全响应头
@@ -617,7 +659,7 @@ Content-Security-Policy: default-src 'self';
 
 ### 9.1 测试总览
 
-**158 个测试，14 个测试文件，100% 通过**
+**192 个测试，16 个测试文件，100% 通过**
 
 ### 9.2 测试文件
 
@@ -632,11 +674,13 @@ Content-Security-Policy: default-src 'self';
 | `useActiveSection.test.ts` | 8 | IO 回调、清理、默认值 |
 | `ScrollProgress.test.tsx` | 5 | 渲染、活跃状态、点击跳转 |
 | `TtsTool.test.tsx` | 33 | Provider 切换、音色选择、风格标签、音频标签、文本输入、高级设置、试听、历史记录、音色设计、音色复刻、导演模式、错误处理 |
-| `mimo.test.ts` | 11 | API Key 检查、端点 URL、Header 构造、消息构建、voiceData、上游错误、缺失音频数据、空 choices |
-| `minimax.test.ts` | 13 | API Key 检查、端点 URL、Authorization Header、format 映射、voice_setting 默认值、speed/vol/pitch、emotion、错误处理 |
+| `mimo.test.ts` (TTS) | 11 | API Key 检查、端点 URL、Header 构造、消息构建、voiceData、上游错误、缺失音频数据、空 choices |
+| `minimax.test.ts` (TTS) | 13 | API Key 检查、端点 URL、Authorization Header、format 映射、voice_setting 默认值、speed/vol/pitch、emotion、错误处理 |
 | `tts-tags.test.ts` | 10 | 标签分类结构、去重、Provider 过滤 |
 | `tts-db.test.ts` | 12 | CRUD 操作、配额管理、降级模式 |
 | `route.test.ts` (tts) | 22 | JSON 校验、文本长度边界、voiceData 大小边界、style 长度限制、speed 边界、format 枚举、CORS、Provider 路由、503/502 错误隔离 |
+| `registry.test.ts` (chat) | 6 | Provider 注册、getProvider 查找、模型列表完整性、唯一 ID 校验 |
+| `route.test.ts` (chat) | 28 | Provider 路由、model 参数、请求校验、错误响应、503/500 错误隔离 |
 
 ### 9.3 测试工具
 
@@ -648,46 +692,38 @@ Content-Security-Policy: default-src 'self';
 
 ## 10. 部署方案
 
-### 10.1 Vercel 部署
+### 10.1 Cloudflare Pages 部署
 
 #### 方式一：Git Integration（推荐）
 
-1. 代码推送到 GitHub（`gh repo create personal-website --private --source=. --push`）
-2. Vercel Dashboard → Add New Project → Import GitHub 仓库
+1. 代码推送到 Gitee/GitHub
+2. Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git
 3. Framework 自动识别为 Next.js
-4. 配置环境变量（见 10.3）
-5. Deploy → 获得 `*.vercel.app` 域名
-6. 之后每次 `git push` 自动触发部署
+4. Build settings: `npm run build` / `.next`
+5. 配置环境变量（见 10.3）
+6. Deploy → 获得 `*.pages.dev` 域名
+7. 之后每次 `git push` 自动触发部署
 
 #### 方式二：CLI 手动部署
 
 ```bash
-npm install -g vercel
-vercel login
-vercel                          # 首次交互式部署
-vercel env add ANTHROPIC_API_KEY
-vercel env add MIMO_API_KEY
-vercel env add MINIMAX_API_KEY
-vercel env add NEXT_PUBLIC_SITE_URL
-vercel --prod                   # 生产部署
+npm install -g wrangler
+wrangler login
+wrangler pages deploy .next
+wrangler pages secret put MIMO_API_KEY
+wrangler pages secret put MINIMAX_API_KEY
 ```
 
 ### 10.2 自定义域名
 
-Vercel Dashboard → Settings → Domains → 添加域名。DNS 配置：
-
-| 类型 | 主机 | 值 |
-|------|------|-----|
-| A | @ | 76.76.21.21 |
-| CNAME | www | cname.vercel-dns.com |
+Cloudflare Dashboard → Workers & Pages → 项目 → Custom domains → 添加域名。Cloudflare 自动配置 DNS。
 
 ### 10.3 环境变量
 
 | 变量 | 必需 | 说明 | 缺失时行为 |
 |------|------|------|------------|
-| `ANTHROPIC_API_KEY` | 推荐 | Claude API 密钥 | AI 聊天显示未配置提示 |
-| `MIMO_API_KEY` | 推荐 | MiMo TTS API 密钥 | TTS 返回 503 |
-| `MINIMAX_API_KEY` | 推荐 | MiniMax TTS API 密钥 | TTS 返回 503 |
+| `MIMO_API_KEY` | 推荐 | MiMo API 密钥 | AI 聊天显示未配置提示，TTS 返回 503 |
+| `MINIMAX_API_KEY` | 推荐 | MiniMax API 密钥 | AI 聊天显示未配置提示，TTS 返回 503 |
 | `NEXT_PUBLIC_SITE_URL` | 否 | 生产 URL（OG 图片） | 默认 `https://liyang.dev` |
 
 ### 10.4 Edge Runtime
@@ -702,8 +738,8 @@ Vercel Dashboard → Settings → Domains → 添加域名。DNS 配置：
 - [ ] 首页加载正常，3D 粒子背景显示
 - [ ] 所有 section 滚动动画正常
 - [ ] 项目卡片展开/折叠正常
-- [ ] TTS 语音合成可用
-- [ ] AI 数字分身聊天可用
+- [ ] TTS 语音合成可用（MiMo ↔ MiniMax 切换正常）
+- [ ] AI 数字分身聊天可用（MiMo ↔ MiniMax 切换正常）
 - [ ] 浏览器控制台无 CSP 错误
 - [ ] 移动端响应式正常
 
@@ -725,7 +761,8 @@ personalWebsite/
 │   │   ├── loading.tsx             # 加载状态
 │   │   └── api/
 │   │       ├── chat/
-│   │       │   └── route.ts        # 数字分身流式 API（Edge Runtime）
+│   │       │   ├── route.ts        # 数字分身多 Provider 路由（Edge Runtime）
+│   │       │   └── route.test.ts   # Chat API 集成测试
 │   │       └── tts/
 │   │           ├── route.ts        # TTS 多 Provider 路由（Edge Runtime）
 │   │           └── route.test.ts   # TTS API 集成测试
@@ -747,20 +784,26 @@ personalWebsite/
 │   │   ├── tools/
 │   │   │   ├── TtsTool.tsx          # TTS 多 Provider 语音合成 UI
 │   │   │   ├── TtsTool.test.tsx     # TTS 组件测试
-│   │   │   └── ChatTool.tsx         # 数字分身聊天 UI
+│   │   │   └── ChatTool.tsx         # 数字分身多 Provider 聊天 UI
 │   │   └── ui/
 │   │       └── ScrollProgress.tsx   # 右侧进度指示器
 │   ├── hooks/
 │   │   ├── useReducedMotion.ts      # prefers-reduced-motion 响应
 │   │   └── useActiveSection.ts      # IntersectionObserver 追踪活跃 section
 │   ├── lib/
+│   │   ├── chat-providers/
+│   │   │   ├── types.ts             # Chat Provider 接口 + 请求/响应类型
+│   │   │   ├── mimo.ts              # MiMo Chat Provider 实现
+│   │   │   ├── minimax.ts           # MiniMax Chat Provider 实现
+│   │   │   ├── index.ts             # Chat Provider 注册表 getChatProvider()
+│   │   │   └── registry.test.ts     # Chat Provider 注册表测试
 │   │   ├── tts-providers/
-│   │   │   ├── types.ts             # Provider 接口 + 请求/响应类型
-│   │   │   ├── mimo.ts              # MiMo Provider 实现 (Chat Completions)
-│   │   │   ├── mimo.test.ts         # MiMo Provider 单元测试
-│   │   │   ├── minimax.ts           # MiniMax Provider 实现 (T2A v2)
-│   │   │   ├── minimax.test.ts      # MiniMax Provider 单元测试
-│   │   │   └── index.ts             # Provider 注册表 getProvider()
+│   │   │   ├── types.ts             # TTS Provider 接口 + 请求/响应类型
+│   │   │   ├── mimo.ts              # MiMo TTS Provider 实现
+│   │   │   ├── mimo.test.ts         # MiMo TTS Provider 单元测试
+│   │   │   ├── minimax.ts           # MiniMax TTS Provider 实现
+│   │   │   ├── minimax.test.ts      # MiniMax TTS Provider 单元测试
+│   │   │   └── index.ts             # TTS Provider 注册表 getProvider()
 │   │   ├── tts-tags.ts              # TTS 风格/音频标签配置
 │   │   ├── tts-tags.test.ts         # 标签配置测试
 │   │   ├── tts-db.ts                # IndexedDB 持久化
@@ -789,17 +832,15 @@ personalWebsite/
 
 ```
 # Required
-ANTHROPIC_API_KEY=sk-ant-xxxxx
 MIMO_API_KEY=tp-xxxxx
-MINIMAX_API_KEY=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+MINIMAX_API_KEY=sk-cp-xxxxx
 
 # Optional
 NEXT_PUBLIC_SITE_URL=https://liyang.dev
 ```
 
 所有 Key 均为可选，缺失时对应功能降级：
-- `ANTHROPIC_API_KEY` 缺失 → AI 聊天显示未配置提示
-- `MIMO_API_KEY` / `MINIMAX_API_KEY` 缺失 → TTS 返回 503
+- `MIMO_API_KEY` / `MINIMAX_API_KEY` 缺失 → AI 聊天显示未配置提示，TTS 返回 503
 
 ---
 
@@ -808,17 +849,17 @@ NEXT_PUBLIC_SITE_URL=https://liyang.dev
 部署前检查：
 
 - [ ] `npm run build` 无错误
-- [ ] `npx vitest run` 158/158 测试通过
-- [ ] Vercel 环境变量已配置所有必需 Key
+- [ ] `npx vitest run` 192/192 测试通过
+- [ ] Cloudflare Pages 环境变量已配置所有必需 Key
 - [ ] 浏览器 DevTools Lighthouse Performance ≥ 90
 - [ ] 键盘导航（PageDown/Up/Home/End）正常工作
 - [ ] `prefers-reduced-motion` 下动画全部禁用
 - [ ] OG 图片在社交平台预览正常（Facebook/Twitter）
-- [ ] 数字分身 API 在 Edge Runtime 下流式返回正常
+- [ ] 数字分身 API 在 Edge Runtime 下流式返回正常（MiMo ↔ MiniMax 切换）
 - [ ] TTS Provider 切换正常（MiMo ↔ MiniMax）
 - [ ] TTS 音色设计、音色复刻、导演模式功能正常
 - [ ] TTS 历史记录持久化到 IndexedDB
 
 ---
 
-*文档版本：v2.0.0 | 最后更新：2026-05-09*
+*文档版本：v2.1.0 | 最后更新：2026-05-18*
