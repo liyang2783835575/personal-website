@@ -1,4 +1,4 @@
-# Li Yang — Personal Website
+<!-- github conflict line -->
 
 赛博朋克风格个人网站，基于 Next.js 16，集成 3D 粒子背景、Framer Motion 动画、AI 数字分身聊天、多 Provider TTS 语音合成。
 
