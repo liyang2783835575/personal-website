@@ -12,3 +12,9 @@ build/
 *.tsbuildinfo
 # TTS verification screenshots (kept locally for visual review, not source-controlled)
 tts-*.png
+
+# Claude local settings (contains local machine paths)
+.claude/settings.local.json
+.claude/screenshots/
+.screenshots/
+temp_clone/
