@@ -11,7 +11,7 @@ export default function Experience() {
   const reducedMotion = useReducedMotion();
 
   return (
-    <section id="experience" className="snap-section py-24 px-6" ref={ref}>
+    <section id="experience" className="snap-section py-24 px-6 cyber-grid" ref={ref}>
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 40 }}

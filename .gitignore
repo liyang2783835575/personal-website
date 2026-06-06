@@ -7,3 +7,8 @@ build/
 *.log
 .DS_Store
 .vscode/
+
+# Local artifacts
+*.tsbuildinfo
+# TTS verification screenshots (kept locally for visual review, not source-controlled)
+tts-*.png

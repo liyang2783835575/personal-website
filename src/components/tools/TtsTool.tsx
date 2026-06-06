@@ -1,849 +1,242 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import {
-  isSupported,
-  addRecord,
-  getAllRecords,
-  deleteRecord,
-  type TtsHistoryRecord,
-} from "@/lib/tts-db";
-import {
-  listProviders,
-  type Voice,
-} from "@/lib/tts-providers";
-import {
-  STYLE_CATEGORIES,
-  getAudioTags,
-  filterTagsByProvider,
-  formatStylePrefix,
-  getMiniMaxEmotion,
-} from "@/lib/tts-tags";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listProviders } from "@/lib/tts-providers";
+import { getAudioTags } from "@/lib/tts-tags";
 
-const AUDIO_MIME_MAP: Record<string, string> = {
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-  pcm16: "audio/pcm",
-  pcm: "audio/pcm",
-};
+import useTtsHistory from "./tts/hooks/useTtsHistory";
+import useTtsGenerator from "./tts/hooks/useTtsGenerator";
+import useVoiceClone from "./tts/hooks/useVoiceClone";
+import useStyleTags from "./tts/hooks/useStyleTags";
 
-interface HistoryItem {
-  id: string;
-  voiceName: string;
-  text: string;
-  audioUrl: string;
-  createdAt: number;
-}
+import TtsProviderModelPicker from "./tts/TtsProviderModelPicker";
+import TtsVoiceDesignPanel from "./tts/TtsVoiceDesignPanel";
+import TtsVoiceClonePanel from "./tts/TtsVoiceClonePanel";
+import TtsVoiceSelector from "./tts/TtsVoiceSelector";
+import TtsStyleTagPanel from "./tts/TtsStyleTagPanel";
+import TtsAudioTagPanel from "./tts/TtsAudioTagPanel";
+import TtsDirectorModePanel, {
+  assembleDirectorStyle,
+} from "./tts/TtsDirectorModePanel";
+import TtsAdvancedSettingsPanel from "./tts/TtsAdvancedSettingsPanel";
+import TtsHistoryList from "./tts/TtsHistoryList";
+import CollapsibleSection from "./tts/CollapsibleSection";
+import { AlertTriangle } from "@/components/icons";
 
+/**
+ * Top-level orchestrator. Owns only the high-level state (provider/model
+ * selection, text input, format, director-mode, voice-design text) and
+ * delegates the rest to focused subcomponents and hooks.
+ *
+ * Public API (default export) is unchanged from the pre-refactor version
+ * so existing consumers (`src/lib/plugins.ts`, `TtsTool.test.tsx`) keep
+ * working without modification.
+ */
 export default function TtsTool() {
   const providers = useMemo(() => listProviders(), []);
   const [selectedProviderId, setSelectedProviderId] = useState("mimo");
   const [selectedModel, setSelectedModel] = useState("mimo-v2.5-tts");
-  const [text, setText] = useState("你好！欢迎使用语音合成功能。");
   const [selectedVoice, setSelectedVoice] = useState("冰糖");
-  const [styleDesc, setStyleDesc] = useState("");
+  const [text, setText] = useState("你好！欢迎使用语音合成功能。");
   const [format, setFormat] = useState<"mp3" | "wav" | "pcm16">("mp3");
-  const [generating, setGenerating] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [previewing, setPreviewing] = useState<string | null>(null);
-  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
-  const [customStyleInput, setCustomStyleInput] = useState("");
-  const [customAudioInput, setCustomAudioInput] = useState("");
-
-  // Voice Design state
+  const [styleDesc, setStyleDesc] = useState("");
   const [voiceDesignDesc, setVoiceDesignDesc] = useState("");
 
-  // Voice Clone state
-  const [cloneAudioBase64, setCloneAudioBase64] = useState<string | null>(null);
-  const [cloneAudioName, setCloneAudioName] = useState("");
-  const [clonePreviewUrl, setClonePreviewUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Director Mode state
-  const [showDirector, setShowDirector] = useState(false);
+  // Director Mode
   const [directorRole, setDirectorRole] = useState("");
   const [directorScene, setDirectorScene] = useState("");
   const [directorDirection, setDirectorDirection] = useState("");
 
-  // Audio Tags collapsed by default
-  const [showAudioTags, setShowAudioTags] = useState(false);
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
-  const previewUrlRef = useRef<string | null>(null);
-  const previewingRef = useRef(false);
-  const historyRef = useRef<HistoryItem[]>([]);
-  useEffect(() => {
-    historyRef.current = history;
-  }, [history]);
-  const dbSupportedRef = useRef(isSupported());
 
+  // ---- Derived state ----
   const currentProvider = useMemo(
     () => providers.find((p) => p.id === selectedProviderId) ?? providers[0],
-    [providers, selectedProviderId]
+    [providers, selectedProviderId],
   );
-
   const voices = useMemo(() => currentProvider?.voices ?? [], [currentProvider]);
   const models = useMemo(() => currentProvider?.models ?? [], [currentProvider]);
-
   const isVoiceDesign = selectedModel.includes("voicedesign");
   const isVoiceClone = selectedModel.includes("voiceclone");
 
-  // Sync selected model when provider changes
-  const handleProviderChange = useCallback((providerId: string) => {
-    const provider = providers.find((p) => p.id === providerId);
-    if (provider) {
-      setSelectedProviderId(providerId);
-      setSelectedModel(provider.defaultModel);
-      setSelectedVoice(provider.defaultVoiceId);
-      setSelectedStyles([]);
-      setCloneAudioBase64(null);
-      setCloneAudioName("");
-      setClonePreviewUrl(null);
-    }
-  }, [providers]);
+  // ---- Hooks ----
+  const clone = useVoiceClone();
+  const styleTags = useStyleTags({
+    selectedProviderId,
+    text,
+    setText,
+    textareaRef,
+  });
+  const { selectedStyles } = styleTags;
+  const { history, removeHistory } = useTtsHistory();
+  const directorStyle = assembleDirectorStyle({
+    role: directorRole,
+    scene: directorScene,
+    direction: directorDirection,
+  });
+  const showDirector = !!(directorRole || directorScene || directorDirection);
 
-  // Load history from IndexedDB on mount
-  useEffect(() => {
-    if (!dbSupportedRef.current) return;
-
-    getAllRecords()
-      .then((records) => {
-        const items = records.map((r) => ({
-          id: r.id,
-          voiceName: r.voiceName,
-          text: r.text,
-          audioUrl: URL.createObjectURL(r.audioBlob),
-          createdAt: r.createdAt,
-        }));
-        setHistory(items);
-      })
-      .catch((err) => {
-        console.error("[TTS] Failed to load history from IndexedDB:", err);
-      });
-  }, []);
-
-  // Revoke all Blob URLs on unmount
-  useEffect(() => {
-    return () => {
-      historyRef.current.forEach((item) => {
-        URL.revokeObjectURL(item.audioUrl);
-      });
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current);
-      }
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-      }
-      if (clonePreviewUrl) {
-        URL.revokeObjectURL(clonePreviewUrl);
-      }
-    };
-  }, [clonePreviewUrl]);
-
-  const insertAtCursor = useCallback((insertText: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const value = textarea.value;
-
-    const newValue = value.slice(0, start) + insertText + value.slice(end);
-    setText(newValue);
-
-    requestAnimationFrame(() => {
-      textarea.focus();
-      const newCursorPos = start + insertText.length;
-      textarea.setSelectionRange(newCursorPos, newCursorPos);
-    });
-  }, []);
-
-  const insertCustomAudioTag = useCallback(() => {
-    const tag = customAudioInput.trim();
-    if (!tag) return;
-    const formatted = tag.startsWith("[") ? tag : `[${tag}]`;
-    insertAtCursor(formatted);
-    setCustomAudioInput("");
-  }, [customAudioInput, insertAtCursor]);
-
-  const providerIdRef = useRef(selectedProviderId);
-  useEffect(() => {
-    providerIdRef.current = selectedProviderId;
-  }, [selectedProviderId]);
-
-  const toggleStyleTag = useCallback((tag: string) => {
-    setSelectedStyles((prev) => {
-      const next = prev.includes(tag)
-        ? prev.filter((t) => t !== tag)
-        : [...prev, tag];
-
-      const prefix = formatStylePrefix(next, providerIdRef.current);
-      setText((currentText) => {
-        const styleRegex = /^\([^)]*\)\s*/;
-        if (prefix) {
-          return styleRegex.test(currentText)
-            ? currentText.replace(styleRegex, prefix)
-            : `${prefix}${currentText}`;
-        } else {
-          return currentText.replace(styleRegex, "");
-        }
-      });
-
-      return next;
-    });
-    textareaRef.current?.focus();
-  }, []);
-
-  const addCustomStyle = useCallback(() => {
-    const tag = customStyleInput.trim();
-    if (!tag) return;
-    toggleStyleTag(tag);
-    setCustomStyleInput("");
-  }, [customStyleInput, toggleStyleTag]);
-
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate audio type
-    if (!file.type.startsWith("audio/")) {
-      setError("请选择音频文件");
-      return;
-    }
-
-    // Max 5MB
-    if (file.size > 5 * 1024 * 1024) {
-      setError("音频文件不能超过 5MB");
-      return;
-    }
-
-    setError(null);
-    setCloneAudioName(file.name);
-
-    // Revoke previous preview
-    if (clonePreviewUrl) {
-      URL.revokeObjectURL(clonePreviewUrl);
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        const base64 = reader.result.split(",")[1];
-        setCloneAudioBase64(base64);
-      }
-    };
-    reader.onerror = () => {
-      setError("音频文件读取失败，请重试或更换文件");
-      setCloneAudioName("");
-    };
-    reader.onabort = () => {
-      setCloneAudioName("");
-    };
-    reader.readAsDataURL(file);
-
-    // Create preview URL
-    const previewUrl = URL.createObjectURL(file);
-    setClonePreviewUrl(previewUrl);
-  }, [clonePreviewUrl]);
-
-  const clearCloneAudio = useCallback(() => {
-    setCloneAudioBase64(null);
-    setCloneAudioName("");
-    if (clonePreviewUrl) {
-      URL.revokeObjectURL(clonePreviewUrl);
-      setClonePreviewUrl(null);
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, [clonePreviewUrl]);
-
-  const assembleDirectorStyle = useCallback(() => {
-    const parts: string[] = [];
-    if (directorRole.trim()) parts.push(`角色：${directorRole.trim()}`);
-    if (directorScene.trim()) parts.push(`场景：${directorScene.trim()}`);
-    if (directorDirection.trim()) parts.push(`指导：${directorDirection.trim()}`);
-    return parts.join("；");
-  }, [directorRole, directorScene, directorDirection]);
-
-  const generateSpeech = useCallback(async (voiceId: string, textToSpeak: string, isPreview = false) => {
-    setError(null);
-
-    if (isPreview) {
-      setPreviewing(voiceId);
-      previewingRef.current = true;
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-        previewAudioRef.current = null;
-      }
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current);
-        previewUrlRef.current = null;
-      }
-    } else {
-      setGenerating(true);
-    }
-
-    // Build style from director mode, manual input, or MiniMax emotion tags
-    let effectiveStyle = styleDesc;
-    if (showDirector) {
-      const directorStyle = assembleDirectorStyle();
-      effectiveStyle = directorStyle || styleDesc;
-    }
-    if (isVoiceDesign && voiceDesignDesc.trim()) {
-      effectiveStyle = voiceDesignDesc.trim();
-    }
-    // MiniMax: map selected style tags to emotion parameter
-    if (selectedProviderId === "minimax" && !effectiveStyle && selectedStyles.length > 0) {
-      effectiveStyle = getMiniMaxEmotion(selectedStyles) ?? "";
-    }
-
-    try {
-      const body: Record<string, unknown> = {
-        provider: selectedProviderId,
-        model: selectedModel,
-        text: textToSpeak,
-        voice: isVoiceDesign ? undefined : voiceId,
-        style: effectiveStyle || undefined,
-        format,
-      };
-
-      if (isVoiceClone && cloneAudioBase64) {
-        body.voiceData = cloneAudioBase64;
-      }
-
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `生成失败: ${res.status}`);
-      }
-
-      const data = await res.json();
-      const audioData = data.audio;
-
-      const byteArray = Uint8Array.from(atob(audioData), (c) => c.charCodeAt(0));
-      const blob = new Blob([byteArray], { type: AUDIO_MIME_MAP[data.format] || "audio/wav" });
-
-      if (isPreview) {
-        const url = URL.createObjectURL(blob);
-        previewUrlRef.current = url;
-        const previewAudio = new Audio(url);
-        previewAudioRef.current = previewAudio;
-
-        previewAudio.onended = () => {
-          if (previewUrlRef.current === url) {
-            URL.revokeObjectURL(url);
-            previewUrlRef.current = null;
-          }
-          previewAudioRef.current = null;
-          previewingRef.current = false;
-          setPreviewing(null);
-        };
-
-        previewAudio.onerror = () => {
-          if (previewUrlRef.current === url) {
-            URL.revokeObjectURL(url);
-            previewUrlRef.current = null;
-          }
-          previewAudioRef.current = null;
-          previewingRef.current = false;
-          setPreviewing(null);
-          setError("音频播放失败");
-        };
-
-        try {
-          await previewAudio.play();
-        } catch {
-          if (previewUrlRef.current === url) {
-            URL.revokeObjectURL(url);
-            previewUrlRef.current = null;
-          }
-          previewAudioRef.current = null;
-          previewingRef.current = false;
-          setPreviewing(null);
-          setError("无法播放音频，请检查浏览器设置");
-        }
-      } else {
-        const voice = voices.find((v) => v.id === selectedVoice);
-        const recordId = crypto.randomUUID();
-        const newUrl = URL.createObjectURL(blob);
-        const record: TtsHistoryRecord = {
-          id: recordId,
-          voiceId: voiceId,
-          voiceName: voice?.name || voiceId,
-          text: textToSpeak.trim().slice(0, 50),
-          audioBlob: blob,
-          createdAt: Date.now(),
-        };
-
-        setHistory((prev) => {
-          let next = [...prev];
-          if (next.length >= 5) {
-            const oldest = next.reduce((a, b) => a.createdAt < b.createdAt ? a : b);
-            URL.revokeObjectURL(oldest.audioUrl);
-            if (dbSupportedRef.current) {
-              deleteRecord(oldest.id).catch((err) => {
-                console.error("[TTS] Failed to delete oldest record:", err);
-              });
-            }
-            next = next.filter((item) => item.id !== oldest.id);
-          }
-          return [
-            {
-              id: recordId,
-              voiceName: record.voiceName,
-              text: record.text,
-              audioUrl: newUrl,
-              createdAt: record.createdAt,
-            },
-            ...next,
-          ];
-        });
-
-        if (dbSupportedRef.current) {
-          addRecord(record).catch((err) => {
-            console.error("[TTS] Failed to save record:", err);
-            setHistory((prev) => prev.filter((h) => h.id !== recordId));
-            URL.revokeObjectURL(newUrl);
-          });
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "生成失败";
-      setError(message);
-      if (isPreview) {
-        previewingRef.current = false;
-        setPreviewing(null);
-      } else {
-        setGenerating(false);
-      }
-    } finally {
-      if (!isPreview) {
-        setGenerating(false);
-      }
-    }
-  }, [
-    styleDesc, format, selectedVoice, selectedProviderId, selectedModel, voices,
-    isVoiceDesign, isVoiceClone, voiceDesignDesc, cloneAudioBase64,
-    showDirector, assembleDirectorStyle, selectedStyles,
-  ]);
-
-  const handleGenerate = useCallback(() => {
-    if (!text.trim()) return;
-    if (isVoiceClone && !cloneAudioBase64) {
-      setError("请先上传音频样本");
-      return;
-    }
-    generateSpeech(selectedVoice, text.trim(), false);
-  }, [text, selectedVoice, generateSpeech, isVoiceClone, cloneAudioBase64]);
-
-  const handlePreview = useCallback((voice: Voice) => {
-    if (previewingRef.current) return;
-    generateSpeech(voice.id, voice.demoText, true);
-  }, [generateSpeech]);
-
-  const handleDeleteHistory = useCallback((id: string) => {
-    setHistory((prev) => {
-      const item = prev.find((h) => h.id === id);
-      if (item) {
-        URL.revokeObjectURL(item.audioUrl);
-      }
-      return prev.filter((h) => h.id !== id);
-    });
-
-    if (dbSupportedRef.current) {
-      deleteRecord(id).catch((err) => {
-        console.error("[TTS] Failed to delete record:", err);
-      });
-    }
-  }, []);
-
-  const filteredCategories = useMemo(() => {
-    return STYLE_CATEGORIES.map((cat) => ({
-      ...cat,
-      tags: filterTagsByProvider(cat.tags, selectedProviderId),
-    })).filter((cat) => cat.tags.length > 0);
-  }, [selectedProviderId]);
+  const generator = useTtsGenerator({
+    selectedProviderId,
+    selectedModel,
+    selectedVoice,
+    voices,
+    isVoiceDesign,
+    isVoiceClone,
+    format,
+    styleDesc,
+    showDirector,
+    directorStyle,
+    voiceDesignDesc,
+    cloneAudioBase64: clone.audioBase64,
+    selectedStyles,
+  });
 
   const filteredAudioTags = useMemo(
     () => getAudioTags(selectedProviderId),
-    [selectedProviderId]
+    [selectedProviderId],
   );
 
-  const generateLabel = isVoiceDesign ? "生成音色"
-    : isVoiceClone ? "复刻并生成语音"
-    : "生成语音";
+  // ---- Provider switching: reset state that doesn't apply to the new provider ----
+  const handleProviderChange = useCallback(
+    (providerId: string) => {
+      const provider = providers.find((p) => p.id === providerId);
+      if (!provider) return;
+      setSelectedProviderId(providerId);
+      setSelectedModel(provider.defaultModel);
+      setSelectedVoice(provider.defaultVoiceId);
+      styleTags.clearStyles();
+      clone.clear();
+    },
+    [providers, styleTags, clone],
+  );
 
-  const currentVoice = voices.find((v) => v.id === selectedVoice);
+  // ---- Text-insertion helper for audio tags ----
+  const insertAtCursor = useCallback(
+    (insertText: string) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+      const newValue = value.slice(0, start) + insertText + value.slice(end);
+      setText(newValue);
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const newCursorPos = start + insertText.length;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      });
+    },
+    [],
+  );
+
+  // ---- Generate / Preview ----
+  const handleGenerate = useCallback(() => {
+    if (!text.trim()) return;
+    if (isVoiceClone && !clone.audioBase64) {
+      generator.setError("请先上传音频样本");
+      return;
+    }
+    void generator.generate(selectedVoice, text.trim(), false);
+  }, [text, selectedVoice, generator, isVoiceClone, clone.audioBase64]);
+
+  // ---- Wire clone error back to the generator's error channel ----
+  useEffect(() => {
+    if (clone.errorMessage) {
+      generator.setError(clone.errorMessage);
+      clone.setErrorMessage(null);
+    }
+  }, [clone.errorMessage, clone, generator]);
+
+  const generateLabel = isVoiceDesign
+    ? "生成音色"
+    : isVoiceClone
+      ? "复刻并生成语音"
+      : "生成语音";
 
   return (
-    <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-4 space-y-4">
+    <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto p-4 space-y-4">
       {/* Row 1: Provider + Model */}
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-            Provider
-          </label>
-          <select
-            value={selectedProviderId}
-            onChange={(e) => handleProviderChange(e.target.value)}
-            className="rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary focus:border-neon-cyan/50 focus:outline-none transition-all font-mono cursor-pointer appearance-none"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 12px center",
-              paddingRight: "2rem",
-            }}
-          >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {models.length > 1 && (
-          <div>
-            <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-              模型
-            </label>
-            <div className="flex gap-1.5 flex-wrap">
-              {models.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setSelectedModel(m.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition-all ${
-                    selectedModel === m.id
-                      ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                      : "border-white/10 text-text-secondary hover:border-white/20"
-                  }`}
-                  title={m.description}
-                >
-                  {m.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <TtsProviderModelPicker
+        providers={providers}
+        selectedProviderId={selectedProviderId}
+        onProviderChange={handleProviderChange}
+        models={models}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+      />
 
       {/* Voice Design Panel */}
       {isVoiceDesign && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-            音色描述
-          </label>
-          <textarea
-            value={voiceDesignDesc}
-            onChange={(e) => setVoiceDesignDesc(e.target.value)}
-            placeholder="描述你想要的音色，例如：一个温柔知性的中年女声，语速偏慢，略带沙哑，适合录制有声书…"
-            rows={3}
-            className="w-full rounded-xl bg-bg-primary border border-neon-purple/20 p-3 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-purple/40 focus:outline-none transition-all resize-none font-mono"
-          />
-          <p className="text-xs text-text-muted mt-1 font-mono">
-            MiMo 会根据描述即时生成一个全新的音色。
-          </p>
-        </div>
+        <TtsVoiceDesignPanel
+          value={voiceDesignDesc}
+          onChange={setVoiceDesignDesc}
+        />
       )}
 
       {/* Voice Clone Panel */}
-      {isVoiceClone && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-            音频样本
-          </label>
-          {!cloneAudioBase64 ? (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-white/10 rounded-xl p-6 text-center cursor-pointer hover:border-neon-magenta/30 transition-colors"
-            >
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto mb-2 text-text-muted">
-                <path d="M12 16V4M8 8l4-4 4 4" />
-                <path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" />
-              </svg>
-              <p className="text-sm text-text-secondary font-mono">点击上传音频样本</p>
-              <p className="text-[10px] text-text-muted mt-1 font-mono">mp3, wav, m4a, 最大 5MB</p>
-              <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileUpload} className="hidden" />
-            </div>
-          ) : (
-            <div className="rounded-xl border border-neon-magenta/20 bg-bg-card p-3">
-              <div className="flex items-center gap-3">
-                <audio src={clonePreviewUrl ?? undefined} controls className="flex-1 h-8" />
-                <button
-                  onClick={clearCloneAudio}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-neon-magenta hover:bg-neon-magenta/10 transition-colors shrink-0"
-                  aria-label="移除音频"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                  </svg>
-                </button>
-              </div>
-              <p className="text-[10px] text-text-muted mt-1.5 font-mono truncate">{cloneAudioName}</p>
-            </div>
-          )}
-        </div>
-      )}
+      {isVoiceClone && <TtsVoiceClonePanel {...clone} />}
 
       {/* Voice Selector — dropdown (normal mode) */}
       {!isVoiceDesign && !isVoiceClone && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-            音色
-          </label>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedVoice}
-              onChange={(e) => setSelectedVoice(e.target.value)}
-              className="flex-1 max-w-md rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary focus:border-neon-cyan/50 focus:outline-none transition-all font-mono cursor-pointer appearance-none"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 12px center",
-                paddingRight: "2rem",
-              }}
-            >
-              {voices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} ({v.gender ?? "—"}, {v.lang})
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => {
-                const voice = voices.find((v) => v.id === selectedVoice);
-                if (voice) handlePreview(voice);
-              }}
-              disabled={previewing === selectedVoice}
-              className="px-3 py-2 rounded-lg text-xs border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/15 transition-all disabled:opacity-50 shrink-0"
-            >
-              {previewing === selectedVoice ? "试听中..." : "试听"}
-            </button>
-          </div>
-        </div>
+        <TtsVoiceSelector
+          voices={voices}
+          selectedVoice={selectedVoice}
+          onChange={setSelectedVoice}
+          previewing={generator.previewing}
+          onPreview={generator.previewVoice}
+        />
       )}
 
       {/* Style Tags — full width, all visible */}
       {!isVoiceDesign && !isVoiceClone && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-            风格标签（多选）
-          </label>
-          <div className="space-y-2">
-            {filteredCategories.map((cat) => (
-              <div key={cat.label}>
-                <span className="text-[10px] text-text-muted font-mono mr-2">{cat.label}</span>
-                <span className="inline-flex flex-wrap gap-1">
-                  {cat.tags.map((t) => {
-                    const isSelected = selectedStyles.includes(t.tag);
-                    return (
-                      <button
-                        key={t.tag}
-                        onClick={() => toggleStyleTag(t.tag)}
-                        className={`px-2 py-0.5 rounded-md text-xs border transition-all ${
-                          isSelected
-                            ? "border-neon-purple/60 bg-neon-purple/15 text-neon-purple"
-                            : "border-neon-purple/20 text-neon-purple/60 hover:border-neon-purple/40 hover:text-neon-purple"
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-1.5 mt-2">
-            <input
-              type="text"
-              value={customStyleInput}
-              onChange={(e) => setCustomStyleInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); addCustomStyle(); }
-              }}
-              placeholder="自定义风格标签…"
-              className="flex-1 max-w-xs px-2.5 py-1 rounded-lg bg-bg-primary border border-white/10 text-xs text-text-primary placeholder:text-text-muted focus:border-neon-purple/40 focus:outline-none transition-all font-mono"
-            />
-            <button
-              onClick={addCustomStyle}
-              disabled={!customStyleInput.trim()}
-              className="px-3 py-1 rounded-lg text-xs border border-neon-purple/30 text-neon-purple hover:bg-neon-purple/10 disabled:opacity-30 transition-all"
-            >
-              添加
-            </button>
-          </div>
-
-          {selectedStyles.length > 0 && (
-            <div className="mt-1.5 text-[10px] text-text-muted font-mono">
-              {selectedProviderId === "minimax" ? (
-                <>情绪: <span className="text-neon-purple">{getMiniMaxEmotion(selectedStyles) ?? "—"}</span></>
-              ) : (
-                <>当前: <span className="text-neon-purple">{formatStylePrefix(selectedStyles)}</span></>
-              )}
-            </div>
-          )}
-        </div>
+        <TtsStyleTagPanel
+          providerId={selectedProviderId}
+          selectedStyles={styleTags.selectedStyles}
+          customStyleInput={styleTags.customStyleInput}
+          setCustomStyleInput={styleTags.setCustomStyleInput}
+          filteredCategories={styleTags.filteredCategories}
+          toggleStyleTag={styleTags.toggleStyleTag}
+          addCustomStyle={styleTags.addCustomStyle}
+        />
       )}
 
       {/* Audio Tags — collapsed by default */}
       {!isVoiceDesign && !isVoiceClone && (
-        <div>
-          <button
-            onClick={() => setShowAudioTags(!showAudioTags)}
-            aria-expanded={showAudioTags}
-            className="text-xs font-mono text-text-secondary hover:text-neon-cyan transition-colors flex items-center gap-1"
-          >
-            <span>{showAudioTags ? "▼" : "▶"}</span>
-            音频标签 ({filteredAudioTags.length})
-          </button>
-
-          {showAudioTags && (
-            <div className="mt-2 pl-4 border-l border-white/5 space-y-2">
-              <div className="flex flex-wrap gap-1">
-                {filteredAudioTags.map((t) => (
-                  <button
-                    key={t.tag}
-                    onClick={() => insertAtCursor(t.tag)}
-                    className="px-2 py-0.5 rounded-md text-xs border border-neon-magenta/40 text-neon-magenta/70 hover:bg-neon-magenta/10 hover:border-neon-magenta/60 hover:text-neon-magenta transition-all"
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={customAudioInput}
-                  onChange={(e) => setCustomAudioInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); insertCustomAudioTag(); }
-                  }}
-                  placeholder="自定义音频标签…"
-                  className="flex-1 max-w-xs px-2.5 py-1 rounded-lg bg-bg-primary border border-white/10 text-xs text-text-primary placeholder:text-text-muted focus:border-neon-magenta/40 focus:outline-none transition-all font-mono"
-                />
-                <button
-                  onClick={insertCustomAudioTag}
-                  disabled={!customAudioInput.trim()}
-                  className="px-3 py-1 rounded-lg text-xs border border-neon-magenta/30 text-neon-magenta hover:bg-neon-magenta/10 disabled:opacity-30 transition-all"
-                >
-                  插入
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <CollapsibleSection
+          title="音频标签"
+          meta={`(${filteredAudioTags.length})`}
+        >
+          <TtsAudioTagPanel
+            tags={filteredAudioTags}
+            insertAtCursor={insertAtCursor}
+          />
+        </CollapsibleSection>
       )}
 
       {/* Director Mode — collapsed by default */}
-      <div>
-        <button
-          onClick={() => setShowDirector(!showDirector)}
-          aria-expanded={showDirector}
-          className="text-xs font-mono text-text-secondary hover:text-neon-cyan transition-colors flex items-center gap-1"
-        >
-          <span>{showDirector ? "▼" : "▶"}</span>
-          导演模式
-        </button>
-
-        {showDirector && (
-          <div className="mt-3 space-y-3 pl-4 border-l border-white/5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1">角色</label>
-                <input
-                  type="text"
-                  value={directorRole}
-                  onChange={(e) => setDirectorRole(e.target.value)}
-                  placeholder="例如: 一位年迈的智者"
-                  className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1">场景</label>
-                <input
-                  type="text"
-                  value={directorScene}
-                  onChange={(e) => setDirectorScene(e.target.value)}
-                  placeholder="例如: 在篝火旁讲述古老的传说"
-                  className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-mono text-text-secondary mb-1">指导</label>
-                <input
-                  type="text"
-                  value={directorDirection}
-                  onChange={(e) => setDirectorDirection(e.target.value)}
-                  placeholder="例如: 语速缓慢而庄重，声音低沉有回声"
-                  className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-text-muted font-mono">
-              角色/场景/指导组合为自然语言风格描述，通过 user role 传给模型。
-            </p>
-          </div>
-        )}
-      </div>
+      <CollapsibleSection title="导演模式">
+        <TtsDirectorModePanel
+          role={directorRole}
+          scene={directorScene}
+          direction={directorDirection}
+          onChange={({ role, scene, direction }) => {
+            setDirectorRole(role);
+            setDirectorScene(scene);
+            setDirectorDirection(direction);
+          }}
+        />
+      </CollapsibleSection>
 
       {/* Advanced Settings — collapsed by default */}
-      <div>
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          aria-expanded={showAdvanced}
-          className="text-xs font-mono text-text-secondary hover:text-neon-cyan transition-colors flex items-center gap-1"
-        >
-          <span>{showAdvanced ? "▼" : "▶"}</span>
-          高级设置
-        </button>
-
-        {showAdvanced && (
-          <div className="mt-3 space-y-3 pl-4 border-l border-white/5">
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                自然语言风格描述（可选）
-              </label>
-              <input
-                type="text"
-                value={styleDesc}
-                onChange={(e) => setStyleDesc(e.target.value)}
-                placeholder="例如: 温柔且略带疲惫的女声，语速缓慢"
-                className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan/50 focus:outline-none transition-all font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">音频格式</label>
-              <div className="flex gap-2">
-                {(["mp3", "wav", "pcm16"] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFormat(f)}
-                    className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${
-                      format === f
-                        ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                        : "border-white/10 text-text-secondary hover:border-white/20"
-                    }`}
-                  >
-                    {f.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      <CollapsibleSection title="高级设置">
+        <TtsAdvancedSettingsPanel
+          styleDesc={styleDesc}
+          onStyleDescChange={setStyleDesc}
+          format={format}
+          onFormatChange={setFormat}
+        />
+      </CollapsibleSection>
 
       {/* Text Input (hidden for voice design) */}
       {!isVoiceDesign && (
@@ -865,41 +258,54 @@ export default function TtsTool() {
       {/* Voice Design preview */}
       {isVoiceDesign && voiceDesignDesc && (
         <div className="p-3 rounded-xl border border-neon-purple/10 bg-bg-card">
-          <p className="text-xs text-text-muted font-mono mb-1 uppercase tracking-wider">音色描述预览</p>
-          <p className="text-sm text-text-primary font-mono whitespace-pre-wrap">{voiceDesignDesc}</p>
+          <p className="text-xs text-text-muted font-mono mb-1 uppercase tracking-wider">
+            音色描述预览
+          </p>
+          <p className="text-sm text-text-primary font-mono whitespace-pre-wrap">
+            {voiceDesignDesc}
+          </p>
         </div>
       )}
 
       {/* Error */}
-      {error && (
+      {generator.error && (
         <div
           role="alert"
           aria-live="polite"
           className="p-3 rounded-xl bg-neon-magenta/5 border border-neon-magenta/20 text-neon-magenta text-sm font-mono flex items-start gap-2"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5" aria-hidden="true">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          {error}
+          <AlertTriangle
+            width={16}
+            height={16}
+            className="shrink-0 mt-0.5"
+          />
+          {generator.error}
         </div>
       )}
 
       {/* Generate Button */}
       <button
+        type="button"
         onClick={handleGenerate}
-        disabled={!text.trim() || generating}
+        disabled={!text.trim() || generator.generating}
         className="w-full py-3 rounded-xl bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/30 hover:bg-neon-cyan/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all font-mono text-sm flex items-center justify-center gap-2"
       >
-        {generating ? (
+        {generator.generating ? (
           <>
             <span className="w-4 h-4 border-2 border-neon-cyan/30 border-t-neon-cyan rounded-full animate-spin" />
             生成中...
           </>
         ) : (
           <>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
             {generateLabel}
@@ -908,44 +314,7 @@ export default function TtsTool() {
       </button>
 
       {/* History */}
-      {history.length > 0 && (
-        <div>
-          <label className="block text-xs font-mono text-text-secondary mb-2 uppercase tracking-wider">
-            生成记录
-          </label>
-          <div className="space-y-2">
-            {history.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-bg-card"
-              >
-                <audio
-                  src={item.audioUrl}
-                  controls
-                  className="flex-1 h-8 [&::-webkit-media-controls-panel]:bg-transparent [&::-webkit-media-controls-current-time-display]:text-text-secondary [&::-webkit-media-controls-time-remaining-display]:text-text-secondary"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-text-primary truncate">
-                    {item.voiceName}
-                  </div>
-                  <div className="text-[10px] text-text-muted truncate">
-                    {item.text}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleDeleteHistory(item.id)}
-                  aria-label="删除"
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-neon-magenta hover:bg-neon-magenta/10 transition-colors shrink-0"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <TtsHistoryList history={history} onDelete={removeHistory} />
     </div>
   );
 }

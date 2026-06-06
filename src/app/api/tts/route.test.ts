@@ -29,7 +29,7 @@ vi.mock("@/lib/tts-providers", () => ({
 
 const { POST } = await import("./route");
 
-function createRequest(body: unknown, origin?: string): Request {
+function createRequest(body: unknown, origin: string = "http://localhost:3000"): Request {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (origin) {
     headers.set("Origin", origin);
@@ -56,8 +56,15 @@ describe("POST /api/tts", () => {
   it("rejects non-JSON body", async () => {
     const req = new Request("http://localhost:3000/api/tts", {
       method: "POST",
-      headers: { "Content-Type": "text/plain" },
+      headers: {
+        "Content-Type": "text/plain",
+        Origin: "http://localhost:3000",
+      },
       body: "not json",
+    });
+    Object.defineProperty(req, "nextUrl", {
+      value: { origin: "http://localhost:3000" },
+      writable: true,
     });
     const res = await POST(req as unknown as never);
     expect(res.status).toBe(400);
@@ -73,6 +80,24 @@ describe("POST /api/tts", () => {
 
   it("rejects cross-origin requests", async () => {
     const req = createRequest({ text: "hello" }, "https://evil.example.com");
+    const res = await POST(req as unknown as never);
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toContain("Forbidden");
+  });
+
+  it("rejects requests with no Origin header", async () => {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    // No Origin set — simulates curl / server-to-server / non-browser caller
+    const req = new Request("http://localhost:3000/api/tts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text: "hello", voice: "test" }),
+    });
+    Object.defineProperty(req, "nextUrl", {
+      value: { origin: "http://localhost:3000" },
+      writable: true,
+    });
     const res = await POST(req as unknown as never);
     expect(res.status).toBe(403);
     const data = await res.json();

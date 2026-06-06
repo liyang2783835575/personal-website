@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import type { ResumeData } from "@/data/resume";
+import { ChevronLeft } from "@/components/icons";
 
 type Project = ResumeData["projects"][number];
 
@@ -66,9 +67,7 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
           onClick={onBack}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-mono text-text-secondary hover:text-neon-cyan hover:bg-neon-cyan/5 border border-white/10 hover:border-neon-cyan/30 transition-all"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
+          <ChevronLeft width={14} height={14} />
           返回
         </button>
 
@@ -95,15 +94,31 @@ export default function ProjectDetail({ project, onBack }: ProjectDetailProps) {
             )}
           </div>
           <h3
-            className={`text-2xl md:text-3xl font-bold mb-2 ${
+            className={`text-2xl md:text-3xl font-bold mb-3 ${
               isEnterprise ? "neon-text-magenta" : "text-text-primary"
             }`}
           >
             {project.name}
           </h3>
-          <p className="text-sm md:text-base text-text-secondary mb-8 leading-relaxed max-w-3xl">
-            {project.description}
-          </p>
+          {project.summary && (
+            <p
+              className={`text-base md:text-lg leading-relaxed max-w-3xl mb-6 px-4 py-3 rounded-lg border-l-2 ${
+                isEnterprise
+                  ? "text-text-primary border-neon-magenta bg-neon-magenta/5"
+                  : "text-text-primary border-neon-cyan bg-neon-cyan/5"
+              }`}
+            >
+              {project.summary}
+            </p>
+          )}
+          <details className="mb-8 group">
+            <summary className="text-xs font-mono text-text-muted cursor-pointer hover:text-neon-cyan uppercase tracking-wider select-none">
+              技术描述 (展开)
+            </summary>
+            <p className="text-sm md:text-base text-text-secondary mt-3 leading-relaxed max-w-3xl">
+              {project.description}
+            </p>
+          </details>
 
           <div className="neon-line mb-8" />
 

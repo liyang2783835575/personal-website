@@ -43,14 +43,19 @@ describe("Skills", () => {
     expect(screen.getByText("AI / LLM 应用")).toBeInTheDocument();
   });
 
-  it("renders skill level percentages", () => {
+  it("renders the 3-tier labels (daily / proficient / familiar)", () => {
     render(<Skills />);
-    // Check all percentages are rendered (some may have multiple matches)
-    const percentages = ["90%", "85%", "80%", "75%", "70%", "65%"];
-    for (const pct of percentages) {
-      const elements = screen.getAllByText(pct);
-      expect(elements.length).toBeGreaterThanOrEqual(1);
-    }
+    // Each tier label appears once per non-empty category (4 categories → at least 1 of each)
+    expect(screen.getAllByText("日常主力").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("熟练").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("了解").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT render numeric skill percentages", () => {
+    render(<Skills />);
+    // We moved away from "TypeScript 90%" style. No number-percent labels in DOM.
+    expect(screen.queryByText("90%")).not.toBeInTheDocument();
+    expect(screen.queryByText("65%")).not.toBeInTheDocument();
   });
 
   it("renders the section number prefix", () => {

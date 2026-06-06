@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 
-function Particles() {
+function Particles({ animate }: { animate: boolean }) {
   const count = 300;
   const mesh = useRef<THREE.Points>(null!);
 
@@ -23,7 +24,7 @@ function Particles() {
   }, []);
 
   useFrame(() => {
-    if (!mesh.current) return;
+    if (!mesh.current || !animate) return;
     const pos = mesh.current.geometry.attributes.position;
     for (let i = 0; i < count; i++) {
       pos.array[i * 3] += velocities[i * 3];
@@ -49,10 +50,10 @@ function Particles() {
         />
       </bufferGeometry>
       <pointsMaterial
-        size={0.04}
+        size={0.08}
         color="#00fff9"
         transparent
-        opacity={0.7}
+        opacity={0.85}
         sizeAttenuation
         blending={THREE.AdditiveBlending}
         depthWrite={false}
@@ -61,11 +62,11 @@ function Particles() {
   );
 }
 
-function GlowOrbs() {
+function GlowOrbs({ animate }: { animate: boolean }) {
   const group = useRef<THREE.Group>(null!);
 
   useFrame(({ clock }) => {
-    if (!group.current) return;
+    if (!group.current || !animate) return;
     const t = clock.getElapsedTime();
     group.current.children.forEach((child, i) => {
       const mesh = child as THREE.Mesh;
@@ -87,7 +88,7 @@ function GlowOrbs() {
           <meshBasicMaterial
             color={orb.color}
             transparent
-            opacity={0.15}
+            opacity={0.25}
             blending={THREE.AdditiveBlending}
           />
         </mesh>
@@ -97,16 +98,50 @@ function GlowOrbs() {
 }
 
 export default function ParticleField() {
+  const reducedMotion = useReducedMotion();
+  const [inView, setInView] = useState(true);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "100px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Skip the whole Canvas on reduced-motion (saves the WebGL context + battery)
+  if (reducedMotion) {
+    return (
+      <div
+        ref={wrapperRef}
+        className="absolute inset-0 z-0 pointer-events-none"
+        aria-hidden="true"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, rgba(0,255,249,0.12) 0%, transparent 60%)",
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="absolute inset-0 -z-10" aria-hidden="true">
+    <div
+      ref={wrapperRef}
+      className="absolute inset-0 z-0 pointer-events-none"
+      aria-hidden="true"
+    >
       <Canvas
         camera={{ position: [0, 0, 10], fov: 60 }}
-        gl={{ antialias: false, alpha: true }}
+        gl={{ antialias: true, alpha: true }}
         style={{ background: "transparent" }}
         dpr={[1, 1.5]}
       >
-        <Particles />
-        <GlowOrbs />
+        <Particles animate={inView} />
+        <GlowOrbs animate={inView} />
       </Canvas>
     </div>
   );

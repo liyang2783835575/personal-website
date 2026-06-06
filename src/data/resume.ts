@@ -23,6 +23,7 @@ export interface ResumeData {
   projects: {
     name: string;
     description: string;
+    summary?: string;
     tech: string[];
     link?: string;
     image?: string;
@@ -83,6 +84,8 @@ export const resume: ResumeData = {
   projects: [
     {
       name: "征信产品核心服务",
+      summary:
+        "为整条征信业务线提供可编排、可灰度的产品组装引擎，支撑 10M+/天 的请求量，是上层所有征信产品的运行时底座。",
       description:
         "企业级产品编排引擎，支撑全量业务线。基于 Spring Boot WebFlux 的全异步架构，日处理千万级请求，通过 DAG 六阶段流水线与可配置规则引擎实现产品的动态组装与分发。",
       tech: [
@@ -142,6 +145,8 @@ export const resume: ResumeData = {
     },
     {
       name: "运营中心",
+      summary:
+        "让运营不用写代码就能完成商户、订单、计费、监控的配置与调整——是业务侧唯一的入口与管控面。",
       description:
         "全平台业务配置的统一管理中枢。涵盖商户入驻、产品上下架、合约签订、订单授权、计费结算、监控规则编排等核心业务流程，通过 Web UI 支撑运营团队的日常配置工作。",
       tech: [
@@ -197,6 +202,8 @@ export const resume: ResumeData = {
     },
     {
       name: "产品中心",
+      summary:
+        "把产品从「设计草稿」到「生产上线」的整条生命周期收口到一处，6 种产品形态、灰度路由、乐观锁并发控制都围绕一个目标：让产品变更可追溯、可回滚。",
       description:
         "征信产品全生命周期管理平台。支持标准产品、模型产品、打包产品、壳产品、路由产品等多种产品形态的定义与配置，管理变量元数据与路由规则，是产品从设计到上线的统一入口。",
       tech: [

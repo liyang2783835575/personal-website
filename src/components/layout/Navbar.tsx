@@ -10,8 +10,8 @@ const navLinks = [
   { label: "技能", href: "#skills" },
   { label: "经历", href: "#experience" },
   { label: "项目", href: "#projects" },
-  { label: "工具", href: "#tools" },
   { label: "联系", href: "#contact" },
+  { label: "Lab", href: "#lab" },
 ];
 
 interface NavbarProps {
@@ -23,9 +23,17 @@ export default function Navbar({ activeId }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 50);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    // Scroll happens inside .snap-container / <main>, not on window.
+    // Find the actual scrolling element and listen there.
+    const container =
+      document.querySelector<HTMLElement>(".snap-container") ??
+      (document.scrollingElement as HTMLElement | null);
+    if (!container) return;
+
+    const onScroll = () => setScrolled(container.scrollTop > 50);
+    onScroll(); // sync initial state
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
   }, []);
 
   const handleNavClick = (href: string) => {

@@ -68,6 +68,12 @@ describe("TtsTool", () => {
     vi.clearAllMocks();
     mockTtsDb.getAllRecords.mockResolvedValue([]);
     mockTtsDb.isSupported.mockReturnValue(true);
+    // Default mock for the data: URL fetch that base64ToBlob makes (used
+    // by useTtsGenerator after the /api/tts JSON response). Per-test
+    // mockResolvedValueOnce still takes priority for the first call.
+    vi.mocked(fetch).mockResolvedValue({
+      blob: async () => new Blob(["test"], { type: "audio/wav" }),
+    } as Response);
   });
 
   describe("provider switching", () => {

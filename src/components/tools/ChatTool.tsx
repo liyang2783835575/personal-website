@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { listChatProviders, type ChatProvider } from "@/lib/chat-providers";
+import { listChatProviders } from "@/lib/chat-providers";
+import { AlertTriangle } from "@/components/icons";
+import ProviderModelPicker from "./ProviderModelPicker";
 
 interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "error";
   content: string;
 }
 
@@ -113,13 +115,21 @@ export default function ChatTool() {
       const errorMsg = err instanceof Error ? err.message : "抱歉，出了点问题，请稍后再试。";
       setMessages((prev) => {
         const lastIndex = prev.length - 1;
-        if (lastIndex >= 0 && prev[lastIndex].id === assistantId && prev[lastIndex].content) {
+        // If the last message is an empty assistant placeholder, replace it with an error bubble
+        if (
+          lastIndex >= 0 &&
+          prev[lastIndex].id === assistantId &&
+          !prev[lastIndex].content
+        ) {
           return [
             ...prev.slice(0, -1),
-            { ...prev[lastIndex], content: prev[lastIndex].content + `\n\n[${errorMsg}]` },
+            { id: crypto.randomUUID(), role: "error", content: errorMsg } as Message,
           ];
         }
-        return [...prev, { id: crypto.randomUUID(), role: "assistant", content: errorMsg }];
+        return [
+          ...prev,
+          { id: crypto.randomUUID(), role: "error", content: errorMsg } as Message,
+        ];
       });
     } finally {
       setLoading(false);
@@ -136,7 +146,7 @@ export default function ChatTool() {
   const quickQuestions = ["你是做什么的？", "你的技术栈是什么？", "怎么联系你？"];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[40%_60%] h-[550px]">
+    <div className="grid grid-cols-1 lg:grid-cols-[40%_60%] min-h-[60dvh] md:h-[550px]">
       {/* Left Column */}
       <div className="overflow-y-auto p-4 border-r border-white/5 flex flex-col chat-scroll">
         <div className="text-center mb-6">
@@ -144,7 +154,7 @@ export default function ChatTool() {
           <h3 className="text-lg font-bold text-text-primary font-mono mb-1">
             Li Yang 的数字分身
           </h3>
-          <p className="text-sm text-text-secondary font-mono">
+          <p className="text-sm text-text-secondary">
             AI 驱动的个人助手，了解 Li Yang 的一切
           </p>
         </div>
@@ -165,55 +175,19 @@ export default function ChatTool() {
         <div className="neon-line mb-6" />
 
         {/* Provider + Model Selector */}
-        <div className="mb-6 space-y-3">
-          <div>
-            <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-              模型提供商
-            </label>
-            <select
-              value={selectedProviderId}
-              onChange={(e) => handleProviderChange(e.target.value)}
-              disabled={loading}
-              className="w-full rounded-lg bg-bg-primary border border-white/10 px-3 py-2 text-sm text-text-primary focus:border-neon-cyan/50 focus:outline-none transition-all font-mono cursor-pointer appearance-none disabled:opacity-50"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238888aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 12px center",
-                paddingRight: "2rem",
-              }}
-            >
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.icon} {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {models.length > 1 && (
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase tracking-wider">
-                模型
-              </label>
-              <div className="flex gap-1.5 flex-wrap">
-                {models.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setSelectedModel(m.id)}
-                    disabled={loading}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] border transition-all disabled:opacity-50 ${
-                      selectedModel === m.id
-                        ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-                        : "border-white/10 text-text-secondary hover:border-white/20"
-                    }`}
-                    title={m.description}
-                  >
-                    {m.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="mb-6">
+          <ProviderModelPicker
+            providers={providers}
+            selectedProviderId={selectedProviderId}
+            onProviderChange={handleProviderChange}
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            providerLabel="模型提供商"
+            modelLabel="模型"
+            showProviderIcon
+            disabled={loading}
+          />
         </div>
 
         {/* Divider */}
@@ -240,7 +214,7 @@ export default function ChatTool() {
 
         {messages.length === 0 && (
           <div className="mt-auto">
-            <p className="text-[10px] text-text-muted text-center font-mono">
+            <p className="text-[10px] text-text-muted text-center">
               点击上方问题或输入你的问题开始对话
             </p>
           </div>
@@ -250,28 +224,55 @@ export default function ChatTool() {
       {/* Right Column — Chat */}
       <div className="flex flex-col overflow-hidden p-4">
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1 chat-scroll">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
+          {messages.map((msg) => {
+            const isUser = msg.role === "user";
+            const isError = msg.role === "error";
+            return (
               <div
-                className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20"
-                    : "bg-bg-card text-text-primary border border-white/5"
-                }`}
+                key={msg.id}
+                className={`flex ${isUser ? "justify-end" : "justify-start"}`}
               >
-                {msg.content || (
-                  <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-bounce" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-bounce [animation-delay:0.1s]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-bounce [animation-delay:0.2s]" />
-                  </span>
-                )}
+                <div
+                  role={isError ? "alert" : undefined}
+                  className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm leading-relaxed flex items-start gap-2 ${
+                    isUser
+                      ? "bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20"
+                      : isError
+                        ? "bg-neon-magenta/10 text-neon-magenta border border-neon-magenta/40"
+                        : "bg-bg-card text-text-primary border border-white/5"
+                  }`}
+                >
+                  {isError && (
+                    <AlertTriangle
+                      width={16}
+                      height={16}
+                      className="shrink-0 mt-0.5"
+                    />
+                  )}
+                  {msg.content || (
+                    <span className="inline-flex gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-bounce" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-bounce [animation-delay:0.1s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-bounce [animation-delay:0.2s]" />
+                    </span>
+                  )}
+                  {isError && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Re-send the last user message
+                        const lastUser = [...messages].reverse().find((m) => m.role === "user");
+                        if (lastUser) setInput(lastUser.content);
+                      }}
+                      className="ml-1 text-xs font-mono underline underline-offset-2 hover:opacity-80"
+                    >
+                      重试
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div ref={messagesEndRef} />
         </div>

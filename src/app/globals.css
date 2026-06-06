@@ -59,7 +59,7 @@ html {
 .snap-container {
   height: 100vh;
   overflow-y: scroll;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: y proximity;
   scrollbar-width: thin;
   scrollbar-color: var(--neon-cyan) var(--bg-secondary);
 }
@@ -78,7 +78,6 @@ html {
 .snap-section {
   min-height: 100vh;
   scroll-snap-align: start;
-  scroll-snap-stop: always;
   position: relative;
 }
 
@@ -229,6 +228,7 @@ body {
 .glitch {
   position: relative;
   display: inline-block;
+  isolation: isolate;
 }
 .glitch::before,
 .glitch::after {
@@ -239,18 +239,28 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  pointer-events: none;
 }
 .glitch::before {
   color: var(--neon-cyan);
-  z-index: -1;
-  animation: glitch-shift-1 3s infinite linear alternate-reverse;
+  z-index: 2;
+  mix-blend-mode: screen;
   clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
 }
 .glitch::after {
   color: var(--neon-magenta);
-  z-index: -2;
-  animation: glitch-shift-2 2.5s infinite linear alternate-reverse;
+  z-index: 2;
+  mix-blend-mode: screen;
   clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .glitch::before {
+    animation: glitch-shift-1 3s infinite linear alternate-reverse;
+  }
+  .glitch::after {
+    animation: glitch-shift-2 2.5s infinite linear alternate-reverse;
+  }
 }
 
 @keyframes glitch-shift-1 {
@@ -303,7 +313,7 @@ body {
 /* ===== Featured Project Card ===== */
 .featured-card {
   box-shadow: 0 0 10px rgba(255, 0, 255, 0.15), inset 0 0 20px rgba(255, 0, 255, 0.03);
-  animation: featured-pulse 3s ease-in-out 1;
+  animation: featured-pulse 3s ease-in-out infinite;
 }
 @keyframes featured-pulse {
   0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 255, 0.15), inset 0 0 20px rgba(255, 0, 255, 0.03); }
@@ -339,16 +349,6 @@ body {
 @keyframes neon-line-shift {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
-}
-
-/* ===== Tool Overlay ===== */
-body.tool-overlay-open {
-  overflow: hidden;
-}
-
-@keyframes overlay-slide-up {
-  0% { transform: translateY(100%); }
-  100% { transform: translateY(0); }
 }
 
 /* ===== Floating Grid Background ===== */

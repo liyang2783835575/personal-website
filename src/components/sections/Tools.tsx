@@ -4,6 +4,7 @@ import { useState, Suspense } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { useRef } from "react";
 import { getEnabledPlugins, type Plugin } from "@/lib/plugins";
+import { ChevronLeft } from "@/components/icons";
 
 export default function Tools() {
   const ref = useRef(null);
@@ -12,7 +13,7 @@ export default function Tools() {
   const plugins = getEnabledPlugins();
 
   return (
-    <section id="tools" className="snap-section py-24 px-6" ref={ref}>
+    <section id="lab" className="snap-section py-24 px-6" ref={ref}>
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -20,8 +21,8 @@ export default function Tools() {
           transition={{ duration: 0.6 }}
         >
           <h2 className="text-3xl md:text-4xl font-bold mb-2 font-mono">
-            <span className="neon-text-cyan">05.</span>{" "}
-            <span className="text-text-primary">工具箱</span>
+            <span className="neon-text-cyan">06.</span>{" "}
+            <span className="text-text-primary">实验室 / Lab</span>
           </h2>
           <div className="neon-line mb-12" />
         </motion.div>
@@ -42,9 +43,7 @@ export default function Tools() {
                   onClick={() => setActivePlugin(null)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-mono text-text-secondary hover:text-neon-cyan hover:bg-neon-cyan/5 border border-white/10 hover:border-neon-cyan/30 transition-all"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 12H5M12 19l-7-7 7-7" />
-                  </svg>
+                  <ChevronLeft width={14} height={14} />
                   返回
                 </button>
 
@@ -69,8 +68,8 @@ export default function Tools() {
                 </div>
               </div>
 
-              {/* Tool content */}
-              <div className="neon-border rounded-2xl bg-bg-secondary overflow-hidden min-h-[500px]">
+              {/* Tool content — responsive height: dvh on mobile, fixed on desktop */}
+              <div className="neon-border rounded-2xl bg-bg-secondary overflow-hidden min-h-[60dvh] md:min-h-[500px]">
                 <Suspense
                   fallback={
                     <div className="flex items-center justify-center py-12">

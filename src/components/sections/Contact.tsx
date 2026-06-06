@@ -1,12 +1,24 @@
 "use client";
 
 import { motion, useInView } from "framer-motion";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { resume } from "@/data/resume";
 
 export default function Contact() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-100px" });
+  const [copied, setCopied] = useState(false);
+
+  const copyEmail = async () => {
+    if (!resume.contacts.email) return;
+    try {
+      await navigator.clipboard.writeText(resume.contacts.email);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard may be blocked — silently no-op */
+    }
+  };
 
   return (
     <section id="contact" className="snap-section py-24 px-6 cyber-grid" ref={ref}>
@@ -40,6 +52,16 @@ export default function Contact() {
             >
               发送邮件
             </a>
+          )}
+          {resume.contacts.email && (
+            <button
+              type="button"
+              onClick={copyEmail}
+              aria-live="polite"
+              className="px-8 py-3 rounded-full border border-white/10 text-text-secondary hover:text-text-primary hover:border-white/20 transition-all duration-300 font-mono text-sm"
+            >
+              {copied ? "已复制 ✓" : "复制邮箱"}
+            </button>
           )}
           {resume.contacts.github && (
             <a

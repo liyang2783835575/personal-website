@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { resume } from "@/data/resume";
+import { cn } from "@/lib/utils";
 import TiltCard from "@/components/ui/TiltCard";
 import ProjectDetail from "./ProjectDetail";
 
@@ -13,14 +14,70 @@ export default function Projects() {
     (typeof resume.projects)[number] | null
   >(null);
 
-  const featuredProject = resume.projects.find((p) => p.featured);
-  const backendProjects = resume.projects.filter(
-    (p) => p.category === "enterprise" && !p.featured
+  // Declare open/close BEFORE the effects that use them. Effects run after
+  // render so the runtime is fine, but the linter / React Compiler require
+  // declaration order.
+  const open = useCallback((project: (typeof resume.projects)[number]) => {
+    setSelectedProject(project);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("project", project.name);
+      window.history.pushState(null, "", url.toString());
+    }
+  }, []);
+
+  const close = useCallback(() => {
+    setSelectedProject(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("project");
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
+
+  // Deep-link via ?project=<slug> so refresh / back-button work
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get("project");
+    if (slug) {
+      const found = resume.projects.find((p) => p.name === slug);
+      if (found) setSelectedProject(found);
+    }
+  }, []);
+
+  // Esc closes detail
+  useEffect(() => {
+    if (!selectedProject) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedProject, close]);
+
+  // resume.projects is a module-level constant, so the bucketed lists below
+  // never change for the lifetime of the page. Memoizing them keeps the
+  // three un-memoized filter passes off the per-frame render path.
+  const featuredProject = useMemo(
+    () => resume.projects.find((p) => p.featured),
+    [],
   );
-  const personalProjects = resume.projects.filter(
-    (p) => p.category === "personal" || (!p.category && !p.featured)
+  const backendProjects = useMemo(
+    () => resume.projects.filter((p) => p.category === "enterprise" && !p.featured),
+    [],
   );
-  const allExpandable = resume.projects.filter((p) => p.highlights);
+  const personalProjects = useMemo(
+    () =>
+      resume.projects.filter(
+        (p) => p.category === "personal" || (!p.category && !p.featured),
+      ),
+    [],
+  );
+  const allExpandable = useMemo(
+    () => resume.projects.filter((p) => p.highlights),
+    [],
+  );
 
   return (
     <section id="projects" className="snap-section py-24 px-6 cyber-grid" ref={ref}>
@@ -42,7 +99,7 @@ export default function Projects() {
             <ProjectDetail
               key="project-detail"
               project={selectedProject}
-              onBack={() => setSelectedProject(null)}
+              onBack={close}
             />
           ) : (
             <motion.div
@@ -61,7 +118,7 @@ export default function Projects() {
                 >
                   <FeaturedCard
                     project={featuredProject}
-                    onClick={() => setSelectedProject(featuredProject)}
+                    onClick={() => open(featuredProject)}
                   />
                 </motion.div>
               )}
@@ -94,7 +151,7 @@ export default function Projects() {
                         >
                           {isExpandable ? (
                             <button
-                              onClick={() => setSelectedProject(project)}
+                              onClick={() => open(project)}
                               className="w-full text-left group cursor-pointer"
                             >
                               <BackendCard project={project} />
@@ -125,16 +182,19 @@ export default function Projects() {
                     <span className="h-px flex-1 bg-gradient-to-r from-transparent via-neon-cyan/30 to-transparent" />
                   </motion.div>
 
-                  <div className="flex flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none pb-4 md:pb-0">
-                    {personalProjects.map((project, i) => (
-                      <motion.div
-                        key={project.name}
-                        initial={{ opacity: 0, y: 30 }}
-                        animate={inView ? { opacity: 1, y: 0 } : {}}
-                        transition={{ duration: 0.5, delay: 0.5 + i * 0.1 }}
-                        className="min-w-[280px] md:min-w-0 snap-start"
-                      >
-                        <TiltCard className="h-full rounded-xl p-6 bg-bg-card neon-border overflow-hidden relative group cursor-default">
+                  <div className="flex flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-x-auto md:overflow-visible snap-x md:snap-none pb-4 md:pb-0">
+                    {personalProjects.map((project, i) => {
+                      const isLinked = Boolean(project.link);
+                      const cardClass = cn(
+                        "h-full rounded-xl p-6 bg-bg-card neon-border overflow-hidden relative",
+                        isLinked && "group cursor-pointer"
+                      );
+                      const titleClass = cn(
+                        "text-lg font-bold text-text-primary mb-2 transition-colors",
+                        isLinked && "group-hover:text-neon-cyan"
+                      );
+                      const inner = (
+                        <>
                           <div className="w-10 h-10 rounded-lg bg-neon-cyan/10 flex items-center justify-center mb-4 text-neon-cyan">
                             <svg
                               width="20"
@@ -147,9 +207,7 @@ export default function Projects() {
                               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                             </svg>
                           </div>
-                          <h3 className="text-lg font-bold text-text-primary mb-2 group-hover:text-neon-cyan transition-colors">
-                            {project.name}
-                          </h3>
+                          <h3 className={titleClass}>{project.name}</h3>
                           <p className="text-sm text-text-secondary mb-4 leading-relaxed">
                             {project.description}
                           </p>
@@ -163,14 +221,8 @@ export default function Projects() {
                               </span>
                             ))}
                           </div>
-                          {project.link && (
-                            <a
-                              href={project.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="absolute top-4 right-4 text-text-muted hover:text-neon-cyan transition-colors"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                          {isLinked && (
+                            <span className="absolute top-4 right-4 text-text-muted group-hover:text-neon-cyan transition-colors">
                               <svg
                                 width="16"
                                 height="16"
@@ -178,14 +230,38 @@ export default function Projects() {
                                 fill="none"
                                 stroke="currentColor"
                                 strokeWidth="2"
+                                aria-hidden="true"
                               >
                                 <path d="M7 17L17 7M17 7H7M17 7v10" />
                               </svg>
-                            </a>
+                            </span>
                           )}
-                        </TiltCard>
-                      </motion.div>
-                    ))}
+                        </>
+                      );
+                      return (
+                        <motion.div
+                          key={project.name}
+                          initial={{ opacity: 0, y: 30 }}
+                          animate={inView ? { opacity: 1, y: 0 } : {}}
+                          transition={{ duration: 0.5, delay: 0.5 + i * 0.1 }}
+                          className="min-w-[280px] md:min-w-0 snap-start"
+                        >
+                          {isLinked ? (
+                            <a
+                              href={project.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 rounded-xl"
+                              aria-label={`${project.name} — 打开外部链接`}
+                            >
+                              <TiltCard className={cardClass}>{inner}</TiltCard>
+                            </a>
+                          ) : (
+                            <TiltCard className={cardClass}>{inner}</TiltCard>
+                          )}
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </>
               )}

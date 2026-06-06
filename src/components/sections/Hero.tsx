@@ -65,8 +65,8 @@ export default function Hero() {
       {/* 3D Particle Background */}
       <ParticleField />
 
-      {/* Gradient overlay for readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-bg-primary pointer-events-none" />
+      {/* Gradient overlay for readability (above canvas, below content) */}
+      <div className="absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-transparent to-bg-primary pointer-events-none" />
 
       {/* Content */}
       <div className="relative z-10 text-center px-6 max-w-3xl">

@@ -19,16 +19,22 @@ const requestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  // CORS: same-origin only
+  // CORS: same-origin only. Require an Origin header (browsers always send
+  // it for application/json POST) and reject anything that doesn't match the
+  // request's own origin. Curl/server-to-server callers with no Origin are
+  // also rejected — the endpoint is meant to be driven by this site only.
   const origin = req.headers.get("origin");
-  if (origin) {
-    const allowedOrigin = req.nextUrl.origin;
-    if (origin !== allowedOrigin) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  if (!origin) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (origin !== req.nextUrl.origin) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Input validation
