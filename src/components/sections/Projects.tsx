@@ -80,21 +80,26 @@ export default function Projects() {
   );
 
   return (
-    <section id="projects" className="snap-section py-24 px-6 cyber-grid" ref={ref}>
-      <div className="max-w-5xl mx-auto">
+    <section
+      id="projects"
+      className="snap-section py-16 md:py-20 px-6 cyber-grid flex flex-col"
+      ref={ref}
+    >
+      <div className="max-w-5xl mx-auto w-full flex flex-col min-h-0 flex-1">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
+          className="shrink-0"
         >
           <h2 className="text-3xl md:text-4xl font-bold mb-2 font-mono">
             <span className="neon-text-cyan">04.</span>{" "}
             <span className="text-text-primary">项目</span>
           </h2>
-          <div className="neon-line mb-12" />
+          <div className="neon-line mb-6" />
         </motion.div>
 
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
           {selectedProject ? (
             <ProjectDetail
               key="project-detail"
@@ -107,6 +112,7 @@ export default function Projects() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              className="section-scroll-area flex-1 min-h-0 pr-1"
             >
               {/* Featured enterprise project */}
               {featuredProject && (
@@ -114,7 +120,7 @@ export default function Projects() {
                   initial={{ opacity: 0, y: 30 }}
                   animate={inView ? { opacity: 1, y: 0 } : {}}
                   transition={{ duration: 0.5, delay: 0.15 }}
-                  className="mb-10"
+                  className="mb-6"
                 >
                   <FeaturedCard
                     project={featuredProject}
@@ -130,7 +136,7 @@ export default function Projects() {
                     initial={{ opacity: 0 }}
                     animate={inView ? { opacity: 1 } : {}}
                     transition={{ duration: 0.4, delay: 0.3 }}
-                    className="flex items-center gap-4 mb-8"
+                    className="flex items-center gap-4 mb-5"
                   >
                     <span className="h-px flex-1 bg-gradient-to-r from-transparent via-neon-cyan/30 to-transparent" />
                     <span className="text-xs font-mono text-neon-cyan tracking-widest whitespace-nowrap">
@@ -139,7 +145,7 @@ export default function Projects() {
                     <span className="h-px flex-1 bg-gradient-to-r from-transparent via-neon-cyan/30 to-transparent" />
                   </motion.div>
 
-                  <div className="grid md:grid-cols-2 gap-6 mb-10">
+                  <div className="grid md:grid-cols-2 gap-5 mb-6">
                     {backendProjects.map((project, i) => {
                       const isExpandable = allExpandable.includes(project);
                       return (
@@ -173,7 +179,7 @@ export default function Projects() {
                     initial={{ opacity: 0 }}
                     animate={inView ? { opacity: 1 } : {}}
                     transition={{ duration: 0.4, delay: 0.45 }}
-                    className="flex items-center gap-4 mb-8"
+                    className="flex items-center gap-4 mb-5"
                   >
                     <span className="h-px flex-1 bg-gradient-to-r from-transparent via-neon-cyan/30 to-transparent" />
                     <span className="text-xs font-mono text-neon-cyan tracking-widest whitespace-nowrap">
@@ -182,11 +188,11 @@ export default function Projects() {
                     <span className="h-px flex-1 bg-gradient-to-r from-transparent via-neon-cyan/30 to-transparent" />
                   </motion.div>
 
-                  <div className="flex flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-x-auto md:overflow-visible snap-x md:snap-none pb-4 md:pb-0">
+                  <div className="flex flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 gap-5 overflow-x-auto md:overflow-visible snap-x md:snap-none pb-2 md:pb-0">
                     {personalProjects.map((project, i) => {
                       const isLinked = Boolean(project.link);
                       const cardClass = cn(
-                        "h-full rounded-xl p-6 bg-bg-card neon-border overflow-hidden relative",
+                        "h-full rounded-xl p-5 bg-bg-card neon-border overflow-hidden relative",
                         isLinked && "group cursor-pointer"
                       );
                       const titleClass = cn(
@@ -195,10 +201,10 @@ export default function Projects() {
                       );
                       const inner = (
                         <>
-                          <div className="w-10 h-10 rounded-lg bg-neon-cyan/10 flex items-center justify-center mb-4 text-neon-cyan">
+                          <div className="w-9 h-9 rounded-lg bg-neon-cyan/10 flex items-center justify-center mb-3 text-neon-cyan">
                             <svg
-                              width="20"
-                              height="20"
+                              width="18"
+                              height="18"
                               viewBox="0 0 24 24"
                               fill="none"
                               stroke="currentColor"
@@ -208,10 +214,10 @@ export default function Projects() {
                             </svg>
                           </div>
                           <h3 className={titleClass}>{project.name}</h3>
-                          <p className="text-sm text-text-secondary mb-4 leading-relaxed">
+                          <p className="text-sm text-text-secondary mb-3 leading-relaxed">
                             {project.description}
                           </p>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1.5">
                             {project.tech.map((t) => (
                               <span
                                 key={t}
@@ -282,12 +288,12 @@ function FeaturedCard({
 }) {
   return (
     <button onClick={onClick} className="w-full text-left group cursor-pointer">
-      <TiltCard className="relative rounded-xl p-6 md:p-8 neon-border-magenta featured-card bg-bg-card overflow-hidden">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-neon-magenta/10 flex items-center justify-center text-neon-magenta">
+      <TiltCard className="relative rounded-xl p-5 md:p-6 neon-border-magenta featured-card bg-bg-card overflow-hidden">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-9 h-9 rounded-lg bg-neon-magenta/10 flex items-center justify-center text-neon-magenta">
             <svg
-              width="20"
-              height="20"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -303,25 +309,25 @@ function FeaturedCard({
             点击查看详情 →
           </span>
         </div>
-        <h3 className="text-xl md:text-2xl font-bold text-text-primary mb-3 group-hover:text-neon-magenta transition-colors">
+        <h3 className="text-xl md:text-2xl font-bold text-text-primary mb-2 group-hover:text-neon-magenta transition-colors">
           {project.name}
         </h3>
-        <p className="text-sm md:text-base text-text-secondary mb-5 leading-relaxed max-w-3xl">
+        <p className="text-sm md:text-base text-text-secondary mb-4 leading-relaxed max-w-3xl">
           {project.description}
         </p>
         {project.metrics && (
-          <div className="flex flex-wrap gap-3 mb-5">
+          <div className="flex flex-wrap gap-2 mb-3">
             {project.metrics.map((m) => (
               <span
                 key={m}
-                className="px-3 py-1 text-xs font-mono rounded-full bg-neon-magenta/5 text-neon-magenta border border-neon-magenta/20"
+                className="px-2.5 py-0.5 text-xs font-mono rounded-full bg-neon-magenta/5 text-neon-magenta border border-neon-magenta/20"
               >
                 {m}
               </span>
             ))}
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {project.tech.map((t) => (
             <span
               key={t}
@@ -342,12 +348,12 @@ function BackendCard({
   project: (typeof resume.projects)[number];
 }) {
   return (
-    <TiltCard className="h-full rounded-xl p-6 bg-bg-card neon-border overflow-hidden relative group-hover:border-neon-cyan/30 transition-colors">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-lg bg-neon-cyan/10 flex items-center justify-center text-neon-cyan">
+    <TiltCard className="h-full rounded-xl p-5 bg-bg-card neon-border overflow-hidden relative group-hover:border-neon-cyan/30 transition-colors">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-9 h-9 rounded-lg bg-neon-cyan/10 flex items-center justify-center text-neon-cyan">
           <svg
-            width="20"
-            height="20"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -368,22 +374,22 @@ function BackendCard({
       <h3 className="text-lg font-bold text-text-primary mb-2 group-hover:text-neon-cyan transition-colors">
         {project.name}
       </h3>
-      <p className="text-sm text-text-secondary mb-4 leading-relaxed">
+      <p className="text-sm text-text-secondary mb-3 leading-relaxed">
         {project.description}
       </p>
       {project.metrics && (
-        <div className="flex flex-wrap gap-3 mb-4">
+        <div className="flex flex-wrap gap-2 mb-3">
           {project.metrics.map((m) => (
             <span
               key={m}
-              className="px-3 py-1 text-xs font-mono rounded-full bg-neon-cyan/5 text-neon-cyan border border-neon-cyan/20"
+              className="px-2.5 py-0.5 text-xs font-mono rounded-full bg-neon-cyan/5 text-neon-cyan border border-neon-cyan/20"
             >
               {m}
             </span>
           ))}
         </div>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {project.tech.map((t) => (
           <span
             key={t}
