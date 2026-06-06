@@ -14,7 +14,7 @@
 | TTS | MiMo + MiniMax 双 Provider，支持音色设计/复刻/导演模式 |
 | Storage | IndexedDB (TTS 历史记录持久化) |
 | Validation | Zod |
-| Testing | Vitest + @testing-library/react (158 tests, 14 files) |
+| Testing | Vitest + @testing-library/react (216 tests, 17 files) |
 | Deployment | Vercel |
 
 ## Getting Started
@@ -50,12 +50,14 @@ npm run dev
 
 - **Hero** — 3D 粒子场 + 打字机标题 + CTA
 - **About / Skills / Experience / Projects / Contact** — 滚动驱动动画 section
-- **Tools** — 插件系统，含 TTS 和 AI 聊天两个工具
-- **TTS 语音合成** — 双 Provider (MiMo / MiniMax)，音色设计、音色复刻、导演模式、40+ 风格标签多选、自定义标签、可折叠高级设置
-- **AI 数字分身** — MiMo/MiniMax 流式聊天，多模型可选，以 Li Yang 身份对话
+- **Lab** (Tail 段) — 互动工具：TTS 语音合成 + AI 数字分身聊天
+- **TTS 语音合成** — 双 Provider (MiMo / MiniMax)，分面板组织：音色设计、音色复刻、风格标签、音频标签、导演模式、高级设置、历史记录
+- **AI 数字分身** — MiMo/MiniMax 流式聊天，多模型可选，错误重试 + 独立错误气泡
+- **Project Detail** — 客户端渲染的项目详情弹层，URL 深链 `?project=<slug>`，Esc 关闭
 - **OG Image** — `/opengraph-image` 自动生成社交分享图
 - **SEO** — metadata、sitemap、robots.txt、JSON-LD schema
-- **Accessibility** — `prefers-reduced-motion` 降级、语义 HTML、ARIA labels、键盘导航
+- **Observability** — `instrumentation.ts` + Sentry hook（可选启用），API 路由统一错误日志
+- **Accessibility** — `prefers-reduced-motion` 降级、语义 HTML、ARIA labels、键盘导航 (PageUp/Down/Home/End)
 
 ## Scripts
 
@@ -75,39 +77,54 @@ npm run test:coverage  # Vitest + 覆盖率报告
 src/
 ├── app/
 │   ├── layout.tsx              # 根布局、字体、SEO 元数据、JSON-LD
-│   ├── page.tsx                # 主页面、scroll-snap 容器、键盘导航
-│   ├── globals.css             # CSS 变量、动画 keyframes
+│   ├── page.tsx                # Server component，组合 HomeShell + 各 section
+│   ├── globals.css             # CSS 变量、动画 keyframes、scroll-snap 样式
 │   ├── opengraph-image.tsx     # OG 图片生成 (1200×630)
+│   ├── error.tsx               # 路由级错误边界
+│   ├── global-error.tsx        # 全局错误边界
+│   ├── loading.tsx / not-found.tsx
 │   ├── robots.ts / sitemap.ts  # SEO
+│   ├── instrumentation.ts      # Sentry / 启动钩子
 │   └── api/
-│       ├── chat/route.ts       # AI 数字分身 (Edge Runtime, 多 Provider 路由)
-│       └── tts/route.ts        # TTS 语音合成 (多 Provider 路由)
+│       ├── chat/route.ts                # AI 数字分身 (Edge Runtime, 多 Provider)
+│       ├── tts/route.ts                 # TTS 语音合成 (多 Provider)
+│       └── v1/audio/speech/route.ts     # 旧版 TTS 代理路由 (兼容)
 ├── components/
-│   ├── layout/    — Navbar, Footer
-│   ├── sections/  — Hero, About, Skills, Experience, Projects, Tools, Contact
-│   ├── effects/   — GlitchText, ParticleField
-│   ├── tools/     — TtsTool, ChatTool
-│   └── ui/        — ScrollProgress
-├── hooks/          — useReducedMotion, useActiveSection
+│   ├── layout/        — Navbar, Footer, HomeShell (active section + 键盘导航)
+│   ├── sections/      — Hero, About, Skills, Experience, Projects, ProjectDetail, Contact, Tools
+│   ├── effects/       — GlitchText, ParticleField
+│   ├── tools/         — TtsTool + ChatTool (tools/Lab section)
+│   │   ├── tts/                    # TTS 子模块（按面板拆分）
+│   │   │   ├── TtsVoiceDesignPanel / TtsVoiceClonePanel / TtsStyleTagPanel
+│   │   │   ├── TtsAudioTagPanel / TtsDirectorModePanel / TtsAdvancedSettingsPanel
+│   │   │   ├── TtsHistoryList / TtsVoiceSelector / TtsProviderModelPicker
+│   │   │   ├── CollapsibleSection / types
+│   │   │   └── hooks/             # useTtsGenerator, useTtsHistory, useTtsPreview,
+│   │   │                          # useVoiceClone, useStyleTags
+│   │   └── ProviderModelPicker     # 共享的 provider+model 选择器
+│   ├── icons/         — 共享 SVG 图标
+│   └── ui/            — ScrollProgress, TiltCard
+├── hooks/              — useReducedMotion, useActiveSection
 ├── lib/
-│   ├── chat-providers/ — AI 聊天 Provider 抽象层 (types, mimo, minimax, index)
-│   ├── tts-providers/  — TTS Provider 抽象层 (types, mimo, minimax, index)
-│   ├── tts-tags.ts     — TTS 风格/音频标签配置
-│   ├── tts-db.ts       — IndexedDB 持久化
-│   ├── plugins.ts      — 插件注册表
-│   └── utils.ts        — cn() 工具函数
+│   ├── chat-providers/     — AI 聊天 Provider 抽象层 (types, mimo, minimax, registry)
+│   ├── tts-providers/      — TTS Provider 抽象层 (types, mimo, minimax, index)
+│   ├── observability/      — Sentry 包装
+│   ├── tts-tags.ts         — TTS 风格/音频标签配置
+│   ├── tts-db.ts           — IndexedDB 持久化
+│   ├── plugins.ts          — 插件注册表
+│   └── utils.ts            — cn() 工具函数
 └── data/
     └── resume.ts       — 单一数据源
 ```
 
 ## Testing
 
-192 个测试，16 个测试文件，覆盖：
+216 个测试，17 个测试文件，覆盖：
 
 - Hooks: `useReducedMotion`, `useActiveSection`
-- Components: `GlitchText`, `Skills`, `Contact`, `ScrollProgress`, `TtsTool`
+- Components: `GlitchText`, `Skills`, `Contact`, `ScrollProgress`, `TtsTool`, `ChatTool`
 - Data: `resume` 完整性校验
-- Lib: `plugins`, `tts-tags`
+- Lib: `plugins`, `tts-tags`, `tts-db`
 - TTS Providers: `mimo`, `minimax` 单元测试
 - Chat Providers: `registry` 单元测试
 - API Routes: `/api/tts` 集成测试 (Zod 校验、CORS、Provider 路由、错误隔离)
@@ -208,9 +225,12 @@ npm run start        # 本地预览生产版本 (http://localhost:3000)
 
 - [ ] 首页正常加载，3D 粒子背景显示
 - [ ] 所有 section 滚动动画正常
+- [ ] Projects section：标题固定在顶部、卡片内部独立滚动
 - [ ] 项目模块：Featured 卡片展开/折叠正常
 - [ ] 项目模块：运营中心/产品中心展开详情正常
+- [ ] Lab section：TTS 与聊天工具可切换
 - [ ] TTS 语音合成可用（需要 MIMO/MiniMax Key）
 - [ ] AI 数字分身聊天可用（需要 MIMO/MiniMax Key）
 - [ ] 浏览器控制台无 CSP 错误
 - [ ] 移动端响应式布局正常
+- [ ] `prefers-reduced-motion: reduce` 下动画降级正常
